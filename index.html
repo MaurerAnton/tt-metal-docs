@@ -125,7 +125,13 @@
 </div>
 
 <h3>0.1. Why Do We Need Special Hardware for AI?</h3>
-<p>Regular CPUs (the processor in your laptop) are designed for general tasks — spreadsheets, web browsing, gaming. AI computation is different: it's mostly <strong>matrix multiplication</strong> — multiplying huge grids of numbers together, billions of times per second. CPUs can do this but very slowly. AI accelerators (GPUs, TPUs, TT cards) are specialized hardware designed to do one thing extremely fast: multiply matrices. Think of it like a truck vs a sports car. The CPU (truck) can do anything. The accelerator (sports car) does one thing — go fast — and does it 100x better.</p>
+<p>Regular CPUs (the processor in your laptop) are designed for general tasks — spreadsheets, web browsing, gaming. AI computation is different: it's mostly <strong>matrix multiplication</strong> — multiplying huge grids of numbers together, billions of times per second. CPUs can do this, but general-purpose CPU cores are not optimized for it.</p>
+
+<div class="warning">
+  <strong>Modern CPUs are catching up.</strong> Intel Xeon processors since Sapphire Rapids (2023) include <strong>AMX</strong> (Advanced Matrix Extensions) — dedicated matrix multiplication hardware built into the CPU. AMD has similar AVX-512 VNNI instructions. A modern server CPU with AMX can run small LLMs (1B-3B parameters) at usable speeds without any accelerator card. However, dedicated accelerators (GPUs, TPUs, TT cards) still provide 10-100x more matrix throughput per dollar and per watt for models above ~3B parameters. For learning and small models, your CPU may be enough. For production inference of 7B+ models, you need an accelerator.
+</div>
+
+<p>AI accelerators (GPUs, TPUs, TT cards) are specialized hardware designed to do one thing extremely fast: multiply matrices. Think of a CPU as a Swiss Army knife — it can do everything, including some matrix math if it has AMX. An accelerator is a specialized power tool — it does one thing, but does it orders of magnitude faster.</p>
 
 <h3>0.2. Key AI Terms in Plain English</h3>
 
@@ -2305,7 +2311,8 @@ model.generate("Hello, world!")</code></pre>
   <tr><td><strong>Entry Price</strong></td><td>$999 (n150s / p100a). Open source, no license fees.</td><td>$0 (software) + GPU cost. A100: ~$10K, H100: ~$30K.</td></tr>
   <tr><td><strong>Power Efficiency</strong></td><td>160W (n150) / 300W (p150). Lower TDP.</td><td>300W (A100) / 700W (H100). Higher TDP.</td></tr>
   <tr><td><strong>Maturity</strong></td><td>v0.68 (2026). Rapidly evolving, monthly releases.</td><td>CUDA 12.x (2007+). Very mature, stable.</td></tr>
-  <tr><td><strong>Debuggability</strong></td><td>DPRINT from kernels, Watcher, Tracy profiler, TT-Exalens. Good observability.</td><td>cuda-gdb, Nsight, CUDA-MEMCHECK. Mature tooling.</td></tr>
+    <tr><td><strong>CPU Inference (AMX)</strong></td><td>Not applicable — TT is an accelerator, CPU is the host. CPU with AMX can run 1-3B models at ~20-50 T/S. TT cards target 7B+ models at 500-2000+ T/S. Complementary, not competing.</td><td>Intel AMX (Sapphire Rapids+), AMD AVX-512 VNNI. Useful for small models. Not competitive for 7B+.</td></tr>
+<tr><td><strong>Debuggability</strong></td><td>DPRINT from kernels, Watcher, Tracy profiler, TT-Exalens. Good observability.</td><td>cuda-gdb, Nsight, CUDA-MEMCHECK. Mature tooling.</td></tr>
 </table>
 
 <h3>15.1. When to Choose Tenstorrent</h3>
@@ -2578,6 +2585,9 @@ output = run_inference_safe(lambda dev: my_model.generate(dev, prompt))</code></
 <h2 id="faq">24. FAQ — Frequently Asked Questions</h2>
 
 <h3>General</h3>
+<p><strong>Q: Can I just use my CPU with AMX instead of buying a TT card?</strong><br>
+A: For small models (1B-3B parameters), yes — modern Intel Xeon CPUs with AMX or AMD CPUs with AVX-512 VNNI can run inference at 20-50 tokens/second. For 7B+ models or production throughput, no — a TT card provides 10-100x more tokens per second per dollar. They're complementary: CPU for development and small models, TT card for production and large models.</p>
+
 <p><strong>Q: Can I replace my NVIDIA GPU with a TT card?</strong><br>
 A: For LLM inference, yes — and at lower cost per token. For training or general CUDA workloads, the ecosystem is less mature. See <a href="#vs-cuda">TT-Metal vs. CUDA</a>.</p>
 
