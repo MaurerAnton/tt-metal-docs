@@ -117,6 +117,75 @@
   <strong>Purpose:</strong> This document is designed to teach <em>everything</em> about TT-Metal — starting from absolute basics (no prior knowledge of AI accelerators required) up to the deepest internals. Every concept is explained in plain English. Every statistic is exact (no approximations). If you read this cover to cover, you will understand the entire TT-Metal ecosystem.
 </div>
 
+<!-- ──────────── COMPUTING BASICS ──────────── -->
+<h2 id="basics">0. Computing Basics — What You Need to Know First</h2>
+<div class="tip">
+  <strong>Skip this if you know computing.</strong> Read it if terms like "PCIe x16," "SRAM," "floating-point," or "driver" are unfamiliar. Every concept is explained from absolute zero.
+</div>
+
+<h3>0.1. Why Do We Need Special Hardware for AI?</h3>
+<p>Regular CPUs (the processor in your laptop) are designed for general tasks — spreadsheets, web browsing, gaming. AI computation is different: it's mostly <strong>matrix multiplication</strong> — multiplying huge grids of numbers together, billions of times per second. CPUs can do this but very slowly. AI accelerators (GPUs, TPUs, TT cards) are specialized hardware designed to do one thing extremely fast: multiply matrices. Think of it like a truck vs a sports car. The CPU (truck) can do anything. The accelerator (sports car) does one thing — go fast — and does it 100x better.</p>
+
+<h3>0.2. Key AI Terms in Plain English</h3>
+
+<table>
+  <tr><th>Term</th><th>Simple Meaning</th></tr>
+  <tr><td><strong>Inference</strong></td><td>Using an already-trained model to get answers. You type a prompt, the model generates text. Like using a calculator — you don't train it, you just use it.</td></tr>
+  <tr><td><strong>Training</strong></td><td>Teaching a model from scratch using millions of examples. Takes days/weeks on thousands of chips. You probably won't do this.</td></tr>
+  <tr><td><strong>Model</strong></td><td>A file (or set of files) containing billions of numbers ("parameters") that encode what the AI has learned. The model IS the AI.</td></tr>
+  <tr><td><strong>Tensor</strong></td><td>A multi-dimensional array of numbers. A vector is a 1D tensor. A matrix is a 2D tensor. An image (width x height x colors) is a 3D tensor. AI models work with tensors.</td></tr>
+  <tr><td><strong>Parameter / Weight</strong></td><td>One number in a model. "Llama 8B" has 8 billion of these numbers. Each stored as 2 bytes (BF16). Parameters ARE the model.</td></tr>
+  <tr><td><strong>Precision</strong></td><td>How many bits used to store each number. FP32 = 32 bits (precise, slow). BF16 = 16 bits (good enough, 2x faster). BFP8 = 8 bits (slightly less accurate, 4x faster). Like image quality: 4K vs 1080p vs 720p.</td></tr>
+  <tr><td><strong>Floating-point</strong></td><td>A way to store numbers with decimal points. "3.14" is floating-point. "3" is integer. AI needs floating-point for probabilities (0.003, 0.997).</td></tr>
+  <tr><td><strong>Token</strong></td><td>A piece of text the model reads/writes. Roughly 3/4 of an English word. "Hello world" = 3 tokens. Models don't see letters — they see tokens.</td></tr>
+  <tr><td><strong>Tokenizer</strong></td><td>Software that converts text to/from tokens. "Hello world" becomes [15496, 995]. The model works with numbers, not text.</td></tr>
+  <tr><td><strong>Context length</strong></td><td>How many tokens the model can "remember" at once. 4K = ~3,000 words = ~6 pages. 128K = ~96,000 words = a short novel.</td></tr>
+  <tr><td><strong>Latency</strong></td><td>How long one operation takes. "This addition takes 5 nanoseconds." Lower is better.</td></tr>
+  <tr><td><strong>Bandwidth</strong></td><td>How much data moves per second. "This card transfers 28 GB/s." Higher is better.</td></tr>
+</table>
+
+<h3>0.3. Hardware Concepts</h3>
+
+<table>
+  <tr><th>Term</th><th>Simple Meaning</th></tr>
+  <tr><td><strong>SRAM</strong></td><td>Very fast, small memory inside a processor. Like the top of your desk — grab things instantly, doesn't hold much. TT cards: 1.5 MB per core.</td></tr>
+  <tr><td><strong>DRAM</strong></td><td>Slower, larger memory outside the processor. Like a filing cabinet — holds a lot, takes time to retrieve. TT cards: 12-32 GB per card.</td></tr>
+  <tr><td><strong>PCIe</strong></td><td>The slot on your motherboard for plugging in cards. "PCIe 4.0 x16" = gen 4, 16 lanes — ~28 GB/s between CPU and card. More lanes = more bandwidth. Higher gen = faster speed.</td></tr>
+  <tr><td><strong>TDP / TBP</strong></td><td>Power usage under full load. 160W = like two old lightbulbs. 300W = like a small space heater. Higher = needs bigger power supply and better cooling.</td></tr>
+  <tr><td><strong>Driver (KMD)</strong></td><td>Software that lets the OS talk to hardware. Without it, the computer doesn't know the TT card exists. Install once.</td></tr>
+  <tr><td><strong>Firmware</strong></td><td>Software ON the hardware itself. Loaded when the card powers up. Controls basic functions. Update to match tt-metal version.</td></tr>
+  <tr><td><strong>RISC-V</strong></td><td>A type of tiny, simple processor. Unlike Intel (x86) or ARM, RISC-V is open-source — anyone can use the design. TT cards use RISC-V for control processors.</td></tr>
+</table>
+
+<h3>0.4. Software Concepts</h3>
+
+<table>
+  <tr><th>Term</th><th>Simple Meaning</th></tr>
+  <tr><td><strong>Linux</strong></td><td>An operating system (like Windows/macOS) that's free and open-source. TT-Metal only works on Linux because it needs low-level hardware access.</td></tr>
+  <tr><td><strong>Command line / Terminal</strong></td><td>A text-based way to control your computer. Type commands instead of clicking. If you see <code>$ command</code>, type <code>command</code> (without $).</td></tr>
+  <tr><td><strong>Python venv</strong></td><td>An isolated copy of Python with its own packages. Prevents conflicts. Always activate: <code>source python_env/bin/activate</code>.</td></tr>
+  <tr><td><strong>Docker</strong></td><td>Run software in a self-contained box with everything included. No dependency installation needed. Like a pre-configured lightweight VM.</td></tr>
+  <tr><td><strong>Git</strong></td><td>Tool for tracking file changes and collaborating. GitHub hosts git repositories. <code>git clone URL</code> = "download this project."</td></tr>
+  <tr><td><strong>HuggingFace</strong></td><td>Website (huggingface.co) hosting AI models and datasets. <code>HF_MODEL=org/model</code> downloads from there. Free account needed for gated models (like Llama).</td></tr>
+  <tr><td><strong>Open Source</strong></td><td>Software with publicly available code. Anyone can read, modify, share. TT-Metal is Apache 2.0 — you can use it for anything, even commercial, for free.</td></tr>
+  <tr><td><strong>API</strong></td><td>Application Programming Interface — commands to make software do things. <code>ttnn.matmul()</code> is an API function. You call it; it does matrix multiplication on the TT card.</td></tr>
+  <tr><td><strong>Compilation</strong></td><td>Converting human-readable code into machine instructions. TT-Metal kernels are compiled C++. Python code is interpreted (run line by line).</td></tr>
+</table>
+
+<h3>0.5. Files and Sizes</h3>
+
+<table>
+  <tr><th>Unit</th><th>Simple Meaning</th></tr>
+  <tr><td><strong>Byte</strong></td><td>One character of text. "A" = 1 byte.</td></tr>
+  <tr><td><strong>Kilobyte (KB)</strong></td><td>~1,000 bytes. A paragraph of text.</td></tr>
+  <tr><td><strong>Megabyte (MB)</strong></td><td>~1,000,000 bytes. A high-resolution photo. One Tensix core SRAM: 1.5 MB.</td></tr>
+  <tr><td><strong>Gigabyte (GB)</strong></td><td>~1,000,000,000 bytes. A HD movie. One TT card DRAM: 12-32 GB.</td></tr>
+  <tr><td><strong>Terabyte (TB)</strong></td><td>~1,000 GB. A large hard drive. Training datasets: measured in TB.</td></tr>
+  <tr><td><strong>Bit</strong></td><td>One binary digit (0 or 1). 8 bits = 1 byte. BF16 uses 16 bits. BFP8 uses 8 bits. Fewer bits = smaller, faster, slightly less accurate.</td></tr>
+  <tr><td><strong>Gbps</strong></td><td>Gigabits per second. Network speed. 800 Gbps = 100 GB/s. Ethernet between TT cards: 200-800 Gbps.</td></tr>
+</table>
+
+
 <!-- ──────────── OVERVIEW ──────────── -->
 
 <!-- ──────────── HOW TO READ ──────────── -->
