@@ -986,6 +986,33 @@ tt_tensor = ttnn.from_torch(torch_bf16, dtype=ttnn.bfloat16, layout=ttnn.TILE_LA
 </table>
 <p>Inter-chip bandwidth (QSFP-DD): up to 800 Gbps (100 GB/s). On Galaxy, only 4 of 32 chips have high-bandwidth PCIe; use those for host I/O.</p>
 
+<h3>5.8. Tensor Introspection</h3>
+<p>Quick ways to check what's happening with your tensors:</p>
+<pre><code># Check if a tensor is on device or host
+print(tt_tensor)           # Shows shape, dtype, layout, device location
+
+# Get shape
+print(tt_tensor.shape)     # Always includes padding to 32-multiples
+
+# Check layout
+tt_tensor.layout           # ROW_MAJOR_LAYOUT or TILE_LAYOUT
+
+# Check dtype
+tt_tensor.dtype            # bfloat16, bfloat8_b, float32, etc.
+
+# Check which device
+tt_tensor.device()         # Returns device object or None if on host
+
+# Memory usage (approximate)
+tt_tensor.memory_size()    # Bytes consumed on device
+
+# Is it actually on device right now?
+# If device() returns None, it's on host CPU</code></pre>
+
+<div class="warning">
+  <strong>Shape vs actual size:</strong> <code>tt_tensor.shape</code> returns the padded shape (32-aligned). A tensor created as 50×100 may show shape [64, 128]. The original unpadded shape is accessible but the tensor uses tile-aligned memory.
+</div>
+
 <!-- ──────────── TT-NN ──────────── -->
    461|<h2 id="ttnn">5. TT-NN — The High-Level Operator Library</h2>
    462|
@@ -1549,6 +1576,25 @@ Training     ──> TT-Blacksmith ──> TT-Train ──> Metalium</code></pre
   <strong>TT-Torch is deprecated.</strong> If you see old references to TT-Torch, use TT-XLA instead. <strong>TT-Forge</strong> is the highest-level path: install with <code>pip install tt-forge</code> and get PyTorch/JAX/ONNX support with 800+ tested models.
 </div>
 
+<h3>11.6. TT-Forge Quickstart</h3>
+<p>TT-Forge is the highest-level path to run models on Tenstorrent hardware — no Metalium or TT-NN knowledge required:</p>
+<pre><code>pip install tt-forge
+
+# Run a HuggingFace model
+import forge
+model = forge.from_pretrained("meta-llama/Llama-3.2-1B")
+model.generate("Hello, world!")</code></pre>
+<p>TT-Forge handles: op selection, kernel compilation, sharding, quantization, and multi-chip distribution automatically. Supported frontends: PyTorch, JAX, ONNX. 800+ model variants pass CI.</p>
+
+<h3>11.7. Pipeline Parallelism (PP)</h3>
+<p>In addition to TP (Tensor Parallel — split weights) and DP (Data Parallel — split batches), TT-Metal supports <strong>Pipeline Parallelism</strong>:</p>
+<ul>
+  <li><strong>How it works:</strong> Model layers are split across chips. Chip 0 runs layers 0-7, chip 1 runs layers 8-15, etc. Activations flow chip-to-chip via Ethernet as a pipeline — while chip 0 processes batch N+1, chip 1 processes batch N.</li>
+  <li><strong>When to use:</strong> Models too large for single-chip TP (weights exceed DRAM). Combines with TP for optimal scaling: TP within layers, PP across layers.</li>
+  <li><strong>PP + TP + DP:</strong> Full 3D parallelism — TP splits layers within a node, PP splits layers across nodes, DP replicates across node groups. Used for largest training workloads.</li>
+  <li><strong>Implementation:</strong> Handled by TT-Fabric and TT-Distributed. Tech reports: "TT-Fabric Architecture," "TT-Distributed Architecture."</li>
+</ul>
+
 <!-- ──────────── BOUNTIES ──────────── -->
    681|<h2 id="bounties">11. Bounty Program</h2>
    682|
@@ -1659,7 +1705,35 @@ Training     ──> TT-Blacksmith ──> TT-Train ──> Metalium</code></pre
   <li><strong>Limited third-party ecosystem</strong> — vLLM plugin exists but no native ONNX Runtime, TensorRT, or OpenVINO integration</li>
 </ul>
 
-<h3>14.4. Precision Tradeoffs</h3>
+<h3>14.4. Wormhole → Blackhole Porting Guide</h3>
+<p>Most Wormhole code runs on Blackhole with minimal changes, but there are differences to be aware of:</p>
+
+<table>
+  <tr><th>Aspect</th><th>Wormhole</th><th>Blackhole</th><th>Impact</th></tr>
+  <tr><td>Tensix Cores</td><td>80 (8×10)</td><td>120 (grid varies)</td><td>Update core grid dimensions. More parallelism available.</td></tr>
+  <tr><td>SRAM per core</td><td>1.5 MB</td><td>1.5 MB</td><td>Same — CB sizes unchanged.</td></tr>
+  <tr><td>DRAM</td><td>12 GB (n150)</td><td>28-32 GB</td><td>Larger models fit. More headroom.</td></tr>
+  <tr><td>PCIe</td><td>4.0 x16 (31.5 GB/s)</td><td>5.0 x16 (63 GB/s)</td><td>~2× host transfer speed. May expose host-side bottlenecks.</td></tr>
+  <tr><td>AI Clock</td><td>1.0 GHz</td><td>1.35 GHz</td><td>35% higher throughput. Kernel optimizations tuned for WH may need rebalancing.</td></tr>
+  <tr><td>Compute API</td><td>32-element vectors, 8 iterations for sin/tanh</td><td>32-element vectors, 8 iterations (with float_to_int16 opt)</td><td>Same vector width — most compute kernels port directly. SFPU transcendental ops may differ.</td></tr>
+  <tr><td>Ethernet</td><td>200 Gbps per port</td><td>800 Gbps per port</td><td>Multi-chip bandwidth 4× higher.</td></tr>
+  <tr><td>Optimization maturity</td><td>Production</td><td>Active development</td><td>Not all models validated on BH yet. Expect performance tuning to be needed.</td></tr>
+</table>
+
+<p><strong>Porting checklist:</strong> (1) Rebuild with Blackhole toolchain. (2) Update core grid in mesh descriptor. (3) Verify CB sizes still fit in SRAM. (4) Profile — higher clock may expose different bottlenecks. (5) Run model correctness tests — most ops are identical, SFPU precision may differ slightly.</p>
+
+<h3>14.5. Custom TT-NN Operator Development</h3>
+<p>When an operation you need doesn't exist in TT-NN, you write it yourself at the Metalium level:</p>
+<ol>
+  <li><strong>Write the kernels:</strong> You need 3 kernels — reader (DRAM→CB), compute (math on tiles), writer (CB→DRAM). See Metalium section 4 for full kernel examples.</li>
+  <li><strong>Create the TT-NN wrapper:</strong> Write a Python function that: creates the program, allocates CBs, compiles kernels, sets runtime args, enqueues work, reads results.</li>
+  <li><strong>Register in the right category:</strong> Place your op in the matching <code>ttnn/cpp/ttnn/operations/</code> category (eltwise, matmul, data_movement, etc.).</li>
+  <li><strong>Add Python bindings:</strong> Expose via nanobind so it's callable from Python as <code>ttnn.my_custom_op()</code>.</li>
+  <li><strong>Test:</strong> Run 1 core, 1 tile, BF16 — compare against PyTorch reference. Then scale up.</li>
+</ol>
+<p>Full guide: "Op Kernel Development" tech report in <code>tech_reports/</code>. Existing ops in <code>ttnn/cpp/ttnn/operations/</code> (33 categories) are the best reference implementations.</p>
+
+<h3>14.6. Precision Tradeoffs</h3>
 <table>
   <tr><th>Operation Type</th><th>BF16 (HiFi4)</th><th>BFP8 (HiFi2)</th><th>BFP4 (LoFi)</th></tr>
   <tr><td>Matrix Multiply</td><td>Reference accuracy</td><td>&lt;0.1% error typical</td><td>&lt;0.5% error typical</td></tr>
