@@ -2616,6 +2616,33 @@ A: (1) Source build: you forgot <code>source python_env/bin/activate</code>. (2)
 <p><strong>Q: Minimum Linux kernel version?</strong><br>
 A: Kernel 5.15+ recommended. TT-KMD driver requires a modern kernel with IOMMU support. Check: <code>uname -r</code>. Ubuntu 22.04 ships with 5.15. Ubuntu 24.04 ships with 6.8. Both work. CentOS 7 (kernel 3.10) does NOT work — too old.</p>
 
+
+<h3>Why? — Explanations for Common Requirements</h3>
+
+<p><strong>Q: Why is Linux kernel 5.15+ required?</strong><br>
+A: Three reasons. (1) <strong>IOMMU support:</strong> The TT-KMD kernel driver uses VFIO/IOMMU for DMA remapping — this allows the host to safely give the TT card direct access to host memory. Proper IOMMU isolation was stabilized in kernel 5.x and is required for security. Without it, the card could read/write any host memory. (2) <strong>Hugepages:</strong> 1 GB hugepages (hugetlbfs) were fully stabilized around 5.4-5.10. TT-Metal uses hugepages to reduce PCIe address translation overhead — without them, every DMA transfer requires many small page table walks, killing throughput. (3) <strong>Driver compatibility:</strong> TT-KMD is built against modern kernel APIs (dma-buf, VFIO, IOMMU) that don't exist in older kernels. CentOS 7 (kernel 3.10) literally doesn't have the kernel interfaces the driver needs.</p>
+
+<p><strong>Q: Why Ubuntu 22.04+ and glibc 2.34+?</strong><br>
+A: glibc 2.34 introduced a major ABI change — <code>libpthread</code> was merged into <code>libc</code>. The pre-built tt-metal binary wheels and Anaconda packages are compiled against glibc 2.34. If your system has an older glibc, the dynamic linker cannot resolve symbols and the import fails with obscure errors. Ubuntu 22.04 is the oldest LTS shipping glibc 2.34. Debian 12, Fedora 36+, and RHEL 9+ also work.</p>
+
+<p><strong>Q: Why does TT-Metal need hugepages?</strong><br>
+A: The TT card DMA-transfers data directly between host RAM and device DRAM via PCIe. Without hugepages, the IOMMU must translate every 4 KB page individually — a 1 GB transfer requires 262,144 page table lookups. With 1 GB hugepages, that same transfer needs 1 lookup. This matters because PCIe 4.0 x16 can push ~28 GB/s — at that speed, the IOMMU would be doing millions of lookups per second without hugepages, becoming the bottleneck. Hugepages reduce IOMMU overhead by 250,000x for large transfers.</p>
+
+<p><strong>Q: Why is IOMMU required? Can I skip it?</strong><br>
+A: No — IOMMU is mandatory and you cannot skip it. It serves two critical functions: (1) <strong>Address translation:</strong> The TT card sees physical addresses. Your host program sees virtual addresses. The IOMMU maps between them so the card can DMA directly into your program's buffers. (2) <strong>Security isolation:</strong> Without IOMMU, the TT card could read/write any physical memory in your system — other processes, kernel memory, everything. IOMMU restricts the card to only the memory regions you explicitly grant it. Intel calls this VT-d; AMD calls it AMD-Vi. Both must be enabled in BIOS.</p>
+
+<p><strong>Q: Why is the device exclusive (one process = one device)?</strong><br>
+A: The Tensix cores have no MMU and no OS. They run bare-metal compiled kernels. There is no concept of "process" on the device — once a kernel is loaded and running, it has full access to the core's SRAM, the NoC, and all DRAM. If two processes shared a device, their kernels could overwrite each other's memory with no protection. Exclusive ownership is the simplest safe model. For multi-tenancy, use sub-devices (partition the chip into isolated core groups).</p>
+
+<p><strong>Q: Why no INT8/INT4 integer quantization?</strong><br>
+A: The hardware was designed around block floating-point from the start. INT8 quantization requires: per-channel scale factors, zero-point offsets, and special handling for asymmetric ranges. BFP shares one exponent across a block — simpler hardware, no calibration step, and naturally handles the wide dynamic range of neural network activations (which can vary from 1e-4 to 1e+4 within one tensor). The tradeoff is BFP needs 8-9 mantissa bits per value vs INT8's 8 — roughly equivalent precision but without the calibration complexity. INT4 would require 4-bit unpacking logic that the Tensix datapath doesn't have.</p>
+
+<p><strong>Q: Why 1.5 MB SRAM per core specifically?</strong><br>
+A: It's a hardware design tradeoff. A 32x32 tile in bf16 is 2 KB. To pipeline effectively (read one tile, compute another, write a third), you need at least 3 tiles × 2 CBs for inputs + 1 CB for output ≈ 7 tiles = 14 KB minimum. For deeper pipelines and larger models, you want more. 1.5 MB allows ~750 tiles of working storage per core — enough for complex multi-tile operations without spilling to DRAM. More SRAM would increase die area and cost. 1.5 MB was the engineering sweet spot for the Wormhole/Blackhole process node.</p>
+
+<p><strong>Q: Why do I need to run <code>cpupower frequency-set -g performance</code>?</strong><br>
+A: The CPU governor controls how fast your CPU cores run. The default "ondemand" or "powersave" governor can throttle CPU frequency during PCIe transfers, causing the PCIe root complex to stall. This directly impacts TT card throughput because the CPU manages command queue submission. Setting the governor to "performance" locks CPU cores at maximum frequency, eliminating this throttling. On modern systems this costs ~5-10W of extra power — negligible compared to the TT card's 160-300W TBP.</p>
+
 <h3>Development</h3>
 <p><strong>Q: ttnn vs tt_lib vs tt_metal — which do I use?</strong><br>
 A: <code>ttnn</code> — always. <code>tt_lib</code> is deprecated. <code>tt_metal</code> is the C++ SDK for kernel development.</p>
