@@ -262,6 +262,67 @@ python3 -m ttnn.examples.usage.run_op_on_device</code></pre>
   <tr><td><code>TT_METAL_EMULE_MODE=1</code></td><td>Enable software emulation mode</td></tr>
 </table>
 
+<h3>3.10. After Unboxing: First-Time Setup Flow</h3>
+<div class="tip">
+  <strong>You just got your TT card. Here's exactly what to do, in order.</strong>
+</div>
+
+<h4>Step 1: Install drivers and firmware</h4>
+<pre><code># One-command install (everything: KMD driver, firmware, TT-SMI)
+curl -fsSL https://github.com/tenstorrent/tt-installer/releases/download/v2.1.0/install.sh -O
+sudo bash install.sh</code></pre>
+
+<h4>Step 2: Verify device detection</h4>
+<pre><code>tt-smi -l          # List all visible Tenstorrent devices</code></pre>
+<p>Expected output: device ID, board type (n150/n300/p150), firmware version, KMD version, temperature. If nothing shows: check PCIe seating, power cables, IOMMU enabled in BIOS.</p>
+
+<h4>Step 3: Install TT-Metal software</h4>
+<pre><code># Option A: pip (fastest)
+pip install ttnn
+
+# Option B: from source (if you need kernels/dev)
+git clone https://github.com/tenstorrent/tt-metal.git --recurse-submodules
+cd tt-metal
+sudo ./install_dependencies.sh
+./create_venv.sh && source python_env/bin/activate
+./build_metal.sh</code></pre>
+
+<h4>Step 4: Health check</h4>
+<pre><code>export PYTHONPATH=/path/to/tt-metal
+python3 -m ttnn.examples.usage.run_op_on_device</code></pre>
+<p>If this prints a tensor without errors: your setup is working. Also run:</p>
+<pre><code>tools/tt-triage.py              # Comprehensive system health check
+tt-smi -l                       # Confirm device visible and healthy</code></pre>
+
+<h4>Step 5: Run your first model</h4>
+<pre><code>huggingface-cli login
+export HF_MODEL=meta-llama/Llama-3.2-1B
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and batch-1"</code></pre>
+
+<h4>What a healthy setup looks like</h4>
+<pre><code># Check everything in one go:
+tt-smi -l | head -20             # Device present, FW version matches
+dmesg | grep -i tenstorrent | tail -5  # No driver errors
+python3 -c "import ttnn; print(ttnn.GetNumPCIeDevices())"  # Returns 1+</code></pre>
+
+<h3>3.11. Device Naming Reference</h3>
+<table>
+  <tr><th>Name</th><th>Chips</th><th>Arch</th><th>What It Is</th></tr>
+  <tr><td><strong>n150 / N150</strong></td><td>1</td><td>Wormhole</td><td>Single Wormhole chip PCIe card. n150d = active fan, n150s = passive heatsink.</td></tr>
+  <tr><td><strong>n300 / N300</strong></td><td>2</td><td>Wormhole</td><td>Two Wormhole chips on one board, linked by internal Ethernet.</td></tr>
+  <tr><td><strong>T3K</strong></td><td>8</td><td>Wormhole</td><td>8-chip Wormhole system (LoudBox). Cluster topology: [2, 4] mesh.</td></tr>
+  <tr><td><strong>TG (Galaxy)</strong></td><td>32</td><td>Wormhole</td><td>32-chip Wormhole system. Cluster: [8, 4] mesh. 4x QuietBox.</td></tr>
+  <tr><td><strong>QuietBox</strong></td><td>8</td><td>Wormhole</td><td>Standard 8-chip mesh. Same as T3K but quieter cooling.</td></tr>
+  <tr><td><strong>p100 / p150</strong></td><td>1</td><td>Blackhole</td><td>Single Blackhole chip. p150a = active, p150b = passive. Latest gen.</td></tr>
+</table>
+<p>Weight cache directory names use: <strong>N150, N300, T3K, TG</strong>. Device topology is <code>[rows, cols]</code> — e.g., n150 = <code>[1, 1]</code>, T3K = <code>[2, 4]</code>.</p>
+
+<h3>3.12. Device Reset</h3>
+<pre><code>tt-smi -r          # Reset all devices (no sudo needed, v3.1.1+)
+tt-smi -tr 0       # Reset device 0 only
+# Legacy (deprecated, requires sudo): tt-smi -glx_reset</code></pre>
+<p>Run <code>tt-smi -r</code> between pytest invocations. If a kernel hangs, Watcher detects it within ~2s and the command queue enters error state — subsequent commands are rejected until reset.</p>
+
 <!-- ──────────── STATISTICS ──────────── -->
    137|<h2 id="stats">2. Repository Statistics (Exact Numbers)</h2>
    138|
@@ -475,6 +536,40 @@ python3 -m ttnn.examples.usage.run_op_on_device</code></pre>
   <tr><td>Llama 3.1 8B</td><td>4k</td><td>64k</td><td>128k</td><td>128k</td></tr>
   <tr><td>Llama 3.2 11B</td><td>4k</td><td>64k</td><td>128k</td><td>128k</td></tr>
   <tr><td>Llama 3.1 70B</td><td>—</td><td>—</td><td>32k</td><td>128k</td></tr>
+</table>
+
+<h3>4.7. Buying Guide: Which Card Should You Get?</h3>
+
+<h4>For learning / development / hobby:</h4>
+<p><strong>n150s ($999)</strong> — cheapest entry point. Passive cooling. Good for learning TT-Metal, developing operators, running small models (Llama 3.2 1B/3B). No multi-chip scaling.</p>
+
+<h4>For LLM inference (7B-11B models):</h4>
+<p><strong>n300 ($1,399)</strong> — dual Wormhole. Runs Llama 3.1 8B at 832 T/s, Qwen 2.5 7B at 707 T/s. 24 GB memory. Best value for 7B-class inference.</p>
+
+<h4>For maximum single-card performance:</h4>
+<p><strong>p150a ($1,399)</strong> — Blackhole. 120 cores, 32 GB, 512 GB/s BW, ~142 TFLOPS BF16. ~2x faster than n150. Best single-card option.</p>
+
+<h4>For large models (70B+):</h4>
+<p>Single cards insufficient. Need QuietBox (8-chip, ~$8,000+) or Galaxy (32-chip). Contact Tenstorrent enterprise sales.</p>
+
+<h4>Active vs. passive cooling:</h4>
+<ul>
+  <li><strong>Active (d/a suffix):</strong> Built-in fan. Louder but self-contained. Good for desktop/workstation.</li>
+  <li><strong>Passive (s/b suffix):</strong> Heatsink only. Requires server chassis airflow. Quieter but needs proper cooling.</li>
+</ul>
+<p>For a desktop PC: get <strong>active cooling</strong> (n150d, p150a). For a server rack with high-RPM fans: passive is fine.</p>
+
+<h4>Do you need QSFP-DD cables?</h4>
+<p>Only if connecting multiple cards for multi-chip scaling. Single card: no cables needed. Two n150 cards cannot be linked — buy an n300 instead. Two p150 cards can link via QSFP-DD 800G cables ($200/0.5m) for 2-chip mesh.</p>
+
+<h4>Quick decision matrix:</h4>
+<table>
+  <tr><th>Your Goal</th><th>Recommendation</th><th>Price</th></tr>
+  <tr><td>Learn TT-Metal, run 1B-3B models</td><td>n150s</td><td>$999</td></tr>
+  <tr><td>Run 7B-11B LLMs, good throughput</td><td>n300</td><td>$1,399</td></tr>
+  <tr><td>Maximum single-card perf, latest arch</td><td>p150a</td><td>$1,399</td></tr>
+  <tr><td>Budget + latest arch</td><td>p100a</td><td>$999</td></tr>
+  <tr><td>70B models, multi-chip research</td><td>QuietBox / Galaxy</td><td>Contact sales</td></tr>
 </table>
 
 <!-- ──────────── METALIUM ──────────── -->
@@ -764,6 +859,80 @@ for (const auto& core : all_cores) {
 <div class="warning">
   <strong>Critical:</strong> All tensor dimensions must be multiples of 32 (the tile size). A 48×1024 matrix becomes 64×1024 after padding. The packing/unpacking hardware handles this, but wasted memory is real — plan your shapes accordingly.
 </div>
+
+<h3>5.4. ttnn vs tt_lib: Which API to Use?</h3>
+<div class="warning">
+  <strong>tt_lib is deprecated.</strong> It exists as a legacy/fallback layer for backward compatibility. All new code should use <code>ttnn</code>. The directory <code>ttnn/tt_lib/</code> is documented as "Legacy/fallback operator implementations."
+</div>
+<table>
+  <tr><th>API</th><th>Status</th><th>Use For</th></tr>
+  <tr><td><code>ttnn</code></td><td><strong>Primary — use this</strong></td><td>All new code: ttnn.matmul(), ttnn.softmax(), etc. High-level Python API. Installed via pip install ttnn.</td></tr>
+  <tr><td><code>tt_lib</code></td><td>Deprecated / legacy</td><td>Backward compatibility only. Do NOT use in new code.</td></tr>
+  <tr><td><code>tt_metal</code></td><td>Low-level C++ SDK</td><td>Kernel development, custom ops, direct hardware control. Not needed for most users.</td></tr>
+</table>
+
+<h3>5.5. PyTorch Interoperability</h3>
+<p>TT-NN is designed to work alongside PyTorch. You can freely mix them:</p>
+<pre><code>import torch
+import ttnn
+
+device = ttnn.open_device(0)
+
+# Torch -> TT: send tensor to device
+torch_in = torch.randn((1, 1, 32, 256), dtype=torch.bfloat16)
+tt_tensor = ttnn.from_torch(torch_in, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+
+# Run TT operation
+tt_result = ttnn.gelu(tt_tensor)
+
+# TT -> Torch: bring result back
+torch_out = ttnn.to_torch(tt_result)
+
+# Continue with PyTorch on CPU/GPU
+final = torch.nn.functional.softmax(torch_out, dim=-1)
+
+ttnn.close_device(device)</code></pre>
+
+<div class="tip">
+  <strong>Model compatibility check:</strong> Not all PyTorch ops have TT-NN equivalents. Check <a href="https://tenstorrent.com/developers">tenstorrent.com/developers</a> for the model compatibility matrix. Standard transformer ops (matmul, softmax, layer_norm, gelu, attention) are well-supported. Exotic ops (custom CUDA kernels, sparse ops, dynamic shapes) likely need porting.
+</div>
+
+<h4>Memory layout awareness</h4>
+<ul>
+  <li><strong>ROW_MAJOR_LAYOUT:</strong> Linear memory (standard PyTorch). Used for host tensors and untilized device data.</li>
+  <li><strong>TILE_LAYOUT:</strong> 32x32 tiled format. Required for most TT-NN operations. from_torch converts automatically.</li>
+  <li><strong>Padding:</strong> Non-32-aligned dimensions are auto-padded. A 48x1024 matrix becomes 64x1024 on device.</li>
+  <li><strong>from_torch with ROW_MAJOR:</strong> Use only for data you need in linear format (e.g., embeddings). Most compute ops require TILE_LAYOUT.</li>
+</ul>
+
+<h3>5.6. Data Format Conversion</h3>
+<pre><code># TT-NN format conversion
+tt_bf16  = ttnn.typecast(tt_fp32, dtype=ttnn.bfloat16)
+tt_fp32  = ttnn.typecast(tt_bf16, dtype=ttnn.float32)
+tt_bfp8  = ttnn.typecast(tt_bf16, dtype=ttnn.bfloat8_b)
+
+# Torch-side format conversion (before sending to device)
+torch_bf16 = torch_fp32.to(torch.bfloat16)
+tt_tensor = ttnn.from_torch(torch_bf16, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)</code></pre>
+
+<h3>5.7. Common Operational Questions</h3>
+
+<h4>Do I need root to run programs?</h4>
+<p><strong>No.</strong> Normal TT-Metal programs (inference, model demos, development) run as a regular user. Root is only needed for one-time setup: install_dependencies.sh, hugepages, IOMMU configuration, CPU governor. Device access goes through /dev/tenstorrent managed by TT-KMD.</p>
+
+<h4>Can multiple processes share one device?</h4>
+<p><strong>No.</strong> ttnn.open_device(0) takes exclusive ownership. One process = one device at a time. Multiple processes can use different devices (different device_id). For multi-device setups, use MeshDevice to manage multiple chips as one logical unit.</p>
+
+<h4>What happens if my model is too big?</h4>
+<p>Memory allocation fails with a clear error. No silent OOM or swapping — SRAM and DRAM are explicitly allocated. Solutions: reduce batch size, use shorter context, enable BFP4 quantization, or move to a device with more memory.</p>
+
+<h4>How fast is host-to-device transfer?</h4>
+<table>
+  <tr><th>Generation</th><th>PCIe</th><th>Theoretical</th><th>Practical Sustained</th></tr>
+  <tr><td>Wormhole (n150/n300)</td><td>4.0 x16</td><td>~31.5 GB/s</td><td>~25-28 GB/s</td></tr>
+  <tr><td>Blackhole (p100/p150)</td><td>5.0 x16</td><td>~63 GB/s</td><td>~50-56 GB/s</td></tr>
+</table>
+<p>Inter-chip bandwidth (QSFP-DD): up to 800 Gbps (100 GB/s). On Galaxy, only 4 of 32 chips have high-bandwidth PCIe; use those for host I/O.</p>
 
 <!-- ──────────── TT-NN ──────────── -->
    461|<h2 id="ttnn">5. TT-NN — The High-Level Operator Library</h2>
@@ -1149,6 +1318,41 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
   <div class="stat-card"><div class="num">~672</div><div class="label">Discord Online</div></div>
 </div>
 
+<h3>11.5. Version Management: Updating & Switching</h3>
+
+<h4>Updating to latest</h4>
+<pre><code># pip (binaries)
+pip install ttnn --upgrade
+
+# From source
+git pull && git submodule update --init --recursive
+./build_metal.sh --clean</code></pre>
+
+<h4>Switching to a specific version</h4>
+<pre><code># pip
+pip install ttnn==0.67.4
+
+# From source
+git fetch --tags
+git checkout v0.67.4
+git submodule update --init --recursive
+./build_metal.sh --clean
+
+# Docker
+docker pull ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:v0.67.4-rc
+
+# Anaconda
+conda create -n metalium python=3.10 tt-metalium=0.67.4 -c conda-forge</code></pre>
+
+<div class="warning">
+  <strong>Firmware compatibility matters.</strong> Each tt-metal version requires specific FW/KMD/SMI versions. v0.67.4 requires FW 19.2.0, KMD 2.5.0, SMI 3.0.38. Use TT-Installer to keep all aligned: <code>bash install.sh --smi-version=v3.0.38 --fw-version=19.2.0 --kmd-version=2.5.0</code>. Do NOT update firmware on shared cluster machines without coordination.
+</div>
+
+<h4>Checking your current version</h4>
+<pre><code>pip show ttnn               # pip installs
+tt-smi -l | head -3         # Firmware/KMD/SMI versions
+python -c "import ttnn; print(ttnn.__version__)"  # Python API version</code></pre>
+
 <!-- ──────────── BOUNTIES ──────────── -->
    681|<h2 id="bounties">11. Bounty Program</h2>
    682|
@@ -1424,6 +1628,68 @@ python your_test.py -svv
 
 <div class="tip">
   <strong>Golden rule:</strong> Start with 1 core, 1 tile, HiFi4 (BF16) fidelity. Once correct, scale up. Never debug with LoFi precision — the numerical noise masks real bugs.
+</div>
+
+<h3>16.5. Profiling Workflow</h3>
+<p>Find where time is spent — step by step:</p>
+
+<h4>Step 1: Enable the profiler</h4>
+<pre><code>import ttnn
+device = ttnn.open_device(0)
+device.enable_profiler()          # Start collecting device-side counters
+# ... run your workload ...
+device.disable_profiler()         # Stop collection</code></pre>
+
+<h4>Step 2: Dump profiling data</h4>
+<pre><code>ttnn.dump_device_profiler(device)
+# Or specify output directory:
+ttnn.dump_device_profiler(device, output_dir="./profile_results")</code></pre>
+
+<h4>Step 3: Read the report</h4>
+<p>The profiler outputs CSV files with per-op timings:</p>
+<ul>
+  <li><strong>Op name</strong> — which operation</li>
+  <li><strong>Duration (ns)</strong> — wall clock time on device</li>
+  <li><strong>Device time (ns)</strong> — pure compute time</li>
+  <li><strong>NoC bandwidth</strong> — data movement throughput</li>
+  <li><strong>CB stalls</strong> — time spent waiting for circular buffer space/data</li>
+  <li><strong>Math utilization</strong> — % of peak FPU/SFPU throughput achieved</li>
+</ul>
+
+<h4>Quick analysis: what the numbers mean</h4>
+<table>
+  <tr><th>Metric</th><th>Good</th><th>Bad</th><th>Fix</th></tr>
+  <tr><td>Math utilization</td><td>&gt;70%</td><td>&lt;30%</td><td>Kernel is data-starved. Increase CB size, check reader bandwidth.</td></tr>
+  <tr><td>CB stalls (read)</td><td>0%</td><td>&gt;20%</td><td>Compute faster than reader. Increase CB size or add pipelining.</td></tr>
+  <tr><td>CB stalls (write)</td><td>0%</td><td>&gt;20%</td><td>Writer slower than compute. Increase CB size or check DRAM BW.</td></tr>
+  <tr><td>NoC utilization</td><td>50-80%</td><td>&lt;10% or &gt;95%</td><td>Too low = not enough parallelism. Too high = bottlenecked on data movement.</td></tr>
+</table>
+
+<h4>Tracy Profiler (real-time timeline)</h4>
+<pre><code># Build with Tracy (default). Connect Tracy GUI:
+# 1. Launch your tt-metal program
+# 2. Open Tracy profiler GUI
+# 3. Connect to host:port shown in program output
+# 4. See ns-resolution timeline of CPU + device operations</code></pre>
+<p>Tracy shows: host-side API calls, kernel compilation time, command queue dispatch, device execution, data transfers — all on one timeline with nanosecond resolution.</p>
+
+<h3>16.6. Common First-Run Problems</h3>
+
+<table>
+  <tr><th>Symptom</th><th>Likely Cause</th><th>Fix</th></tr>
+  <tr><td>"No devices found" / GetNumPCIeDevices()==0</td><td>Driver not loaded or device not detected</td><td>Check PCIe seating and power. Run tt-smi -l. Verify lsmod|grep tenstorrent. Reboot if needed.</td></tr>
+  <tr><td>"Permission denied" on /dev/tenstorrent</td><td>User not in proper group</td><td>sudo usermod -aG tenstorrent $USER. Log out and back in.</td></tr>
+  <tr><td>Build fails: "clang-20 not found"</td><td>Missing compiler</td><td>sudo apt-get install clang-20 (Ubuntu) or from apt.llvm.org</td></tr>
+  <tr><td>Build fails: "CMake 3.24 required"</td><td>Old CMake</td><td>Install CMake 4.0.2 from GitHub releases</td></tr>
+  <tr><td>ImportError: "libtt_metal.so not found"</td><td>PYTHONPATH not set</td><td>export PYTHONPATH=/path/to/tt-metal. For source builds: source python_env/bin/activate</td></tr>
+  <tr><td>"Hugepages not configured"</td><td>Missing 1G hugepages</td><td>sudo ./install_dependencies.sh --hugepages. Reboot.</td></tr>
+  <tr><td>Model runs but gives garbage output</td><td>Wrong precision or uninitialized memory</td><td>Use BF16 (HiFi4) for verification. Ensure weights loaded correctly. Check huggingface-cli login.</td></tr>
+  <tr><td>Timeout / hang during model run</td><td>Model too large or kernel deadlock</td><td>Try smaller model first (Llama 3.2 1B). Check Watcher output for hang reports.</td></tr>
+  <tr><td>Firmware version mismatch warning</td><td>TT-Metal != firmware version</td><td>Update with TT-Installer: bash install.sh --smi-version=v3.0.38 --fw-version=19.2.0 --kmd-version=2.5.0</td></tr>
+</table>
+
+<div class="tip">
+  <strong>Golden debugging rule:</strong> If something doesn't work, reduce to the simplest case: 1 core, 1 tile, 1 operation, BF16 precision. Once that works, scale up one dimension at a time.
 </div>
 
 <!-- ──────────── ATTACK SURFACE ──────────── -->
