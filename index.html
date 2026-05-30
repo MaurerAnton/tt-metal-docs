@@ -88,7 +88,7 @@
   <a href="#overview">Overview</a>
   <a href="#getting-started">Setup</a>
   <a href="#stats">Stats</a>
-  <a href="#hardware">HW Arch</a>
+  <a href="#hardware">HW</a>
   <a href="#hardware-specs">Specs</a>
   <a href="#metalium">Metalium</a>
   <a href="#end-to-end">Code</a>
@@ -105,7 +105,7 @@
   <a href="#vs-cuda">vs CUDA</a>
   <a href="#glossary">Glossary</a>
   <a href="#error-handling">Debug</a>
-  <a href="#attack-surface">Bounty</a>
+  <a href="#attack-surface">Security</a>
 </nav>
    100|
    101|<h1>TT-Metal: The Complete Reference</h1>
@@ -466,11 +466,15 @@ tt-smi -tr 0       # Reset device 0 only
    276|  <tr><td>1 chip</td><td>1</td><td>n150 / p150</td><td>Llama 3.2 3B</td></tr>
    277|  <tr><td>2 chips (Ethernet-linked)</td><td>2</td><td>n300</td><td>Qwen 2.5 7B (TP=2)</td></tr>
    278|  <tr><td>8 chips (mesh)</td><td>8</td><td>QuietBox</td><td>Llama 3.1 70B (TP=8), DeepSeek R1</td></tr>
-   279|  <tr><td>32 chips</td><td>32</td><td>Galaxy</td><td>Llama 3.3 70B (TP=32) — 2,269 T/S</td></tr>
-   280|  <tr><td>Multi-host mesh</td><td>32+ × N</td><td>tt-Fabric</td><td>Data-center scale training</td></tr>
-   281|</table>
-   282|
-   283|<!-- ──────────── HARDWARE SPECS ──────────── -->
+  <tr><td>32 chips</td><td>32</td><td>Galaxy</td><td>Llama 3.3 70B (TP=32) — 2,269 T/S</td></tr>
+  <tr><td>Multi-host mesh</td><td>32+ × N</td><td>tt-Fabric</td><td>Data-center scale training</td></tr>
+</table>
+
+<h3>3.9. Sub-Devices — Partitioning a Chip</h3>
+<p>You can partition one physical chip into multiple independent <strong>sub-devices</strong>, each with its own set of Tensix cores. This allows running multiple independent workloads simultaneously on one chip, isolating experiments (one sub-device crash doesn't affect others), and resource partitioning in multi-tenant environments.</p>
+<p>Each sub-device gets a rectangular range of cores (<code>CoreRange</code>) and operates as if it were an independent device. Sub-devices within the same chip share DRAM bandwidth and NoC resources — performance isolation is partial. See the "Sub-Devices" tech report in <code>tech_reports/</code> for the full API.</p>
+
+<!-- ──────────── METALIUM ──────────── -->
 <h2 id="hardware-specs">4. Hardware Specifications & Pricing</h2>
 
 <h3>4.1. Wormhole (Current Mainstream)</h3>
@@ -571,6 +575,28 @@ tt-smi -tr 0       # Reset device 0 only
   <tr><td>Budget + latest arch</td><td>p100a</td><td>$999</td></tr>
   <tr><td>70B models, multi-chip research</td><td>QuietBox / Galaxy</td><td>Contact sales</td></tr>
 </table>
+
+<h3>4.8. Power & Thermal Guide</h3>
+<table>
+  <tr><th>Card</th><th>TBP</th><th>PSU Headroom</th><th>Connector</th><th>Cooling</th></tr>
+  <tr><td>n150s / n150d</td><td>160W</td><td>~200W for card (~350W+ total system)</td><td>1x 4+4-pin EPS12V</td><td>n150d: fan. n150s: chassis airflow</td></tr>
+  <tr><td>n300s / n300d</td><td>300W</td><td>~350W for card (~500W+ total system)</td><td>1x 4+4-pin EPS12V</td><td>n300d: fan. n300s: chassis airflow</td></tr>
+  <tr><td>p100a / p150a / p150b</td><td>300W</td><td>~350W for card (~500W+ total system)</td><td>1x 12+4-pin 12V-2x6 (ATX 3.1)</td><td>p150a: fan. p150b: passive. p100a: fan</td></tr>
+</table>
+
+<h4>Monitoring temperature:</h4>
+<pre><code>tt-smi -l          # Shows temperature per device
+watch -n 2 tt-smi -l  # Continuous monitoring</code></pre>
+
+<h4>Practical tips:</h4>
+<ul>
+  <li><strong>Desktop PC:</strong> Get active cooling (n150d, p150a). The fan is audible but self-contained. Make sure your case has adequate ventilation.</li>
+  <li><strong>Server rack:</strong> Passive cards (n150s, n300s, p150b) require high-RPM chassis fans — do NOT run passive cards without proper server airflow.</li>
+  <li><strong>PSU:</strong> For a single n150: 500W+ PSU is safe. For p150 or n300: 650W+. For dual GPU + TT card: 850W+. Always use a quality PSU — the 12V-2x6 connector on Blackhole cards requires ATX 3.1 compliance.</li>
+  <li><strong>Ambient temperature:</strong> Keep under 35°C. If <code>tt-smi -l</code> shows board temps above 85°C, improve cooling immediately.</li>
+  <li><strong>Power states:</strong> Idle power is lower than TBP. Peak power occurs during large matmul operations and multi-core workloads.</li>
+  <li><strong>CPU governor:</strong> Set to performance: <code>sudo cpupower frequency-set -g performance</code> (prevents PCIe throttling).</li>
+</ul>
 
 <!-- ──────────── METALIUM ──────────── -->
    284|<h2 id="metalium">4. TT-Metalium — The Low-Level SDK</h2>
@@ -1226,6 +1252,44 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
   <strong>Check existing models for reference.</strong> The <code>tt_transformers</code> demo supports 40+ LLMs with a single entry point — study how new models are added there. For missing ops, you may need to write custom Metalium kernels (see Op Kernel Development tech report).
 </div>
 
+<h3>8.6. Flash Attention (SDPA)</h3>
+<p>TT-NN provides an optimized <code>scaled_dot_product_attention</code> implementation in the <code>transformer</code> operation category. This is the standard attention mechanism used by all LLM demos.</p>
+
+<pre><code># The SDPA op is used internally by tt_transformers — you typically don't call it directly.
+# It's configured via precision settings:
+# sdpa_decode: hifi2na  (no accumulation, fast for token-by-token generation)
+# sdpa_prefill: hifi4   (BF16, reference accuracy for prompt processing)</code></pre>
+
+<div class="warning">
+  <strong>Attention precision matters critically.</strong> Use BF16 (HiFi4) for attention, softmax, and layer_norm. BFP8 (HiFi2) has minor degradation — acceptable for GEMM. BFP4 (LoFi) produces garbage for attention — never use it. SDPA is the most precision-sensitive operation in any transformer model.
+</div>
+
+<p><strong>Tech report:</strong> "Flash Attention" in <code>tech_reports/</code> — optimized attention implementation on Wormhole with detailed performance analysis.</p>
+
+<h3>8.7. Collective Communication (CCL) for Multi-Chip</h3>
+<p>TT-NN's <code>ccl</code> operation category provides distributed communication primitives: <code>all_gather</code>, <code>reduce_scatter</code>, <code>all_reduce</code>. These are essential for tensor parallelism (TP) and data parallelism (DP) across multiple chips.</p>
+
+<table>
+  <tr><th>Operation</th><th>What It Does</th><th>Used In</th></tr>
+  <tr><td><code>all_gather</code></td><td>Each chip broadcasts its shard to all others — every chip gets the full tensor</td><td>Gathering results after distributed compute</td></tr>
+  <tr><td><code>reduce_scatter</code></td><td>Each chip reduces its shard and scatters the result — each chip gets a different portion</td><td>Distributing gradients in DP training</td></tr>
+  <tr><td><code>all_reduce</code></td><td>Reduce + broadcast — every chip gets the same reduced result</td><td>Syncing gradients across all chips</td></tr>
+</table>
+
+<h4>Scaling patterns:</h4>
+<ul>
+  <li><strong>TP (Tensor Parallel):</strong> Model weights split across chips. Each chip holds part of each layer. CCL ops synchronize activations between layers. Used by Llama 70B at TP=8 (8 chips).</li>
+  <li><strong>DP (Data Parallel):</strong> Each chip processes a different batch with full model copy. CCL ops sync gradients after backward pass. Used by Falcon 7B at DP=32 (32 chips, 13,517 T/S).</li>
+  <li><strong>Hybrid TP+DP:</strong> Combine both for large-scale training — TP within a node, DP across nodes.</li>
+</ul>
+
+<h4>Multi-host (tt-Fabric):</h4>
+<p>For systems spanning multiple host servers, <strong>tt-Fabric</strong> routes traffic between 32-chip boxes over standard Ethernet (up to 800 Gbps). The DeepSeek-V3 demo runs on 2× Galaxy (64 chips across 2 hosts):</p>
+<pre><code>./models/demos/deepseek_v3/scripts/launch_multihost_galaxy.py 2x -- \\
+  python models/demos/deepseek_v3/demo/demo.py --model-path $DEEPSEEK_V3_HF_MODEL</code></pre>
+
+<p>Build with distributed support (default): OpenMPI required. Tech reports: "TT-Fabric Architecture," "TT-Distributed Architecture," "Programming Mesh of Devices," "Programming Multiple Meshes."</p>
+
 <!-- ──────────── BUILD ──────────── -->
    587|<h2 id="build">8. Build System</h2>
    588|
@@ -1876,14 +1940,56 @@ ttnn.dump_device_profiler(device, output_dir="./profile_results")</code></pre>
    841|</table>
    842|
    843|<h3>15.2. Recommended Bounty Hunting Strategy</h3>
-   844|<ol>
-   845|  <li><strong>Start with circular buffers</strong> — relatively small surface (15K lines), well-defined boundaries, every operation uses them, bugs here affect everything.</li>
-   846|  <li><strong>Focus on edge cases in operators</strong> — zero-size tensors, NaN/Inf propagation, format boundary conditions.</li>
-   847|  <li><strong>Multi-chip distributed code</strong> — very low competition, complex race conditions possible.</li>
-   848|  <li><strong>Build a fuzzing harness</strong> targeting tile-level operations with random tensor shapes, formats, and sharding configurations.</li>
-   849|</ol>
-   850|
-   851|<!-- ──────────── FOOTER ──────────── -->
+<ol>
+  <li><strong>Start with circular buffers</strong> — relatively small surface (15K lines), well-defined boundaries, every operation uses them, bugs here affect everything.</li>
+  <li><strong>Focus on edge cases in operators</strong> — zero-size tensors, NaN/Inf propagation, format boundary conditions.</li>
+  <li><strong>Multi-chip distributed code</strong> — very low competition, complex race conditions possible.</li>
+  <li><strong>Build a fuzzing harness</strong> targeting tile-level operations with random tensor shapes, formats, and sharding configurations.</li>
+</ol>
+
+<h3>15.3. Security Architecture — RISC-V Sandbox</h3>
+<p>Understanding the isolation model helps identify where boundaries can be broken:</p>
+
+<h4>Hardware isolation properties:</h4>
+<ul>
+  <li><strong>Per-core SRAM isolation:</strong> Each Tensix core's 1.5 MB SRAM is physically separate. One core cannot access another core's SRAM without an explicit NoC transaction. No cache coherency means no speculative side channels.</li>
+  <li><strong>No MMU on baby RISC-V:</strong> The 5 RISC-V CPUs per core are RV32IM (Machine mode only) — no virtual memory, no page tables, no user/supervisor separation. Kernel code runs bare-metal.</li>
+  <li><strong>No OS on device cores:</strong> Kernels are compiled C++ running bare-metal on RISC-V. There is no process isolation between kernels on the same core — a kernel has full access to its core's SRAM.</li>
+  <li><strong>Dispatch via command queue:</strong> The host queues commands. The device's dispatch RISC-V core processes them. No direct host access to device SRAM.</li>
+  <li><strong>No speculative execution:</strong> RISC-V RV32IM cores are simple in-order processors — no Spectre-class side channels.</li>
+</ul>
+
+<h4>What isolation does NOT exist:</h4>
+<ul>
+  <li>A malicious kernel on one core can issue NoC reads/writes to any other core's SRAM or any DRAM bank</li>
+  <li>The NoC does not enforce access control — any core can read/write any address reachable via NoC</li>
+  <li>Kernels are compiled from user-provided C++ — the JIT compilation path is a code injection surface</li>
+  <li>Python bindings (nanobind) cross the host C++/Python boundary — type confusion and refcounting bugs possible</li>
+</ul>
+
+<div class="warning">
+  <strong>Model isolation:</strong> Running untrusted third-party models provides limited isolation. A malicious kernel can read other models' weights if co-located and disrupt other workloads by corrupting shared DRAM. Do not co-locate untrusted models with sensitive workloads on the same chip.
+</div>
+
+<h3>15.4. How to File a Good Bug Report</h3>
+<p>For issues on <a href="https://github.com/tenstorrent/tt-metal/issues">github.com/tenstorrent/tt-metal/issues</a>:</p>
+<ol>
+  <li><strong>Environment:</strong> tt-metal version, firmware version (<code>tt-smi -l | head -3</code>), device type, OS, Python version</li>
+  <li><strong>Minimal reproducer:</strong> Smallest possible script (ideally < 30 lines) that demonstrates the bug. 1 core, 1 tile, simplest precision.</li>
+  <li><strong>Expected vs actual:</strong> What you expected, what happened instead. Exact error message or output.</li>
+  <li><strong>Watcher output:</strong> If the device hung/crashed, include Watcher logs (printed automatically).</li>
+  <li><strong>DPRINT output:</strong> If you added DPRINT, include it. Enable with <code>TT_METAL_DPRINT_CORES=x,y</code>.</li>
+  <li><strong>First-time contributor?</strong> Mention it — you need to request write access per CONTRIBUTING.md.</li>
+  <li><strong>Bounty issue?</strong> Note the bounty label. AI agents are prohibited from claiming bounties.</li>
+</ol>
+
+<pre><code># Collect diagnostics for a bug report:
+tt-smi -l > smi.txt
+dmesg | grep -i tenstorrent > dmesg.txt
+python -c "import ttnn; print(ttnn.__version__)"
+pip freeze | grep -i torch > deps.txt</code></pre>
+
+<!-- ──────────── FOOTER ──────────── -->
    852|<hr style="margin:3em 0 1em;border-color:var(--border)">
    853|<p style="text-align:center;color:var(--muted);font-size:0.85em">
    854|  TT-Metal: The Complete Reference — Generated May 2026<br>
