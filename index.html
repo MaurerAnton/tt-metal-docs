@@ -2571,6 +2571,51 @@ A: Watcher detects hangs in ~2s. Run <code>tt-smi -r</code> to reset. Reduce to 
 <p><strong>Q: Where do I ask for help?</strong><br>
 A: <a href="https://discord.gg/tenstorrent">Discord</a> (5,371 members) for real-time help. <a href="https://github.com/tenstorrent/tt-metal/issues">GitHub Issues</a> for bugs. <a href="https://github.com/tenstorrent/tt-metal/discussions">GitHub Discussions</a> for Q&amp;A.</p>
 
+
+<h3>Absolute Beginner Questions</h3>
+
+<p><strong>Q: TT-Metal vs TT-Metalium vs Metalium — are they the same?</strong><br>
+A: <strong>Yes.</strong> TT-Metal = Metalium = TT-Metalium. All refer to the same open-source SDK at <a href="https://github.com/tenstorrent/tt-metal">github.com/tenstorrent/tt-metal</a>. TT-NN is the high-level Python library built on top. Tenstorrent uses all three names interchangeably in their docs.</p>
+
+<p><strong>Q: What is a "token"? How many tokens is a typical sentence?</strong><br>
+A: A token is roughly 3/4 of an English word. "Hello, how are you?" = ~6 tokens. A typical paragraph (~100 words) = ~130 tokens. Model context limits (4K, 8K, 128K) are measured in tokens. A 128K context model can process roughly 96,000 English words — about 150 pages of a novel.</p>
+
+<p><strong>Q: What does "8B" mean in "Llama 3.1 8B"?</strong><br>
+A: 8 billion parameters. Parameters are the numbers (weights) that define what the model knows. More parameters = smarter model but needs more memory. 1B = ~2 GB in BF16. 8B = ~16 GB. 70B = ~140 GB. Memory needed = parameters * bytes_per_param * overhead (typically ~1.5x for KV cache).</p>
+
+<p><strong>Q: How much disk space do model weights take?</strong><br>
+A: Roughly parameters * 2 bytes. Llama 3.2 1B: ~2 GB. Llama 3.1 8B: ~16 GB. Llama 3.1 70B: ~140 GB. Weights download once, then TT-NN caches converted versions (similar size). Budget 2x the download size for working space.</p>
+
+<p><strong>Q: Do I need internet after downloading weights once?</strong><br>
+A: No. After the first run downloads weights from HuggingFace, subsequent runs use the cached copy. Set <code>HF_MODEL=/path/to/local/weights</code> to use a local directory. No network required after initial download.</p>
+
+<p><strong>Q: TILE_LAYOUT vs ROW_MAJOR_LAYOUT — when do I use which?</strong><br>
+A: Use <strong>TILE_LAYOUT</strong> for any tensor you plan to compute on (matmul, add, gelu, etc.). Use <strong>ROW_MAJOR_LAYOUT</strong> for tensors you only need to read/write in linear order (embeddings, token IDs, final output before returning to host). Most TT-NN ops require TILE_LAYOUT. <code>from_torch</code> with TILE_LAYOUT handles conversion automatically.</p>
+
+<p><strong>Q: How do I get different answers each time from the same prompt?</strong><br>
+A: LLMs use <strong>temperature</strong> and <strong>sampling</strong> to introduce randomness. In tt_transformers, this is configured in the model's generation config. Typical values: temperature=0.0 (deterministic, same output every time), temperature=0.7 (creative but coherent), temperature=1.0+ (very random, may produce nonsense).</p>
+
+<p><strong>Q: Can I run the same model on TT and GPU and compare outputs?</strong><br>
+A: Yes. Run the model in PyTorch on GPU/CPU as reference, then run on TT, compare with <code>torch.allclose(tt_output, ref_output, atol=1e-2)</code>. Differences up to 1e-2 are normal for BF16. Differences beyond 1e-1 indicate a bug. Always compare at the same precision level (both BF16, or both FP32).</p>
+
+<p><strong>Q: T/S/U numbers — what's "good" for a human reading?</strong><br>
+A: Human reading speed is ~5-10 tokens/second. So: 20 T/S/U = twice as fast as you can read. 50 T/S/U = instant-feeling. 200+ T/S/U = you see blocks of text appear at once. Below 10 T/S/U = you wait for each word — frustrating. TTFT under 100ms is ideal (instant). TTFT over 1s = you notice the delay.</p>
+
+<p><strong>Q: Can I stop a running model mid-generation?</strong><br>
+A: Press Ctrl+C. The device may need a reset: <code>tt-smi -r</code>. Always reset between interrupted runs — the device state may be inconsistent after a mid-generation interrupt.</p>
+
+<p><strong>Q: What if my weight download fails halfway?</strong><br>
+A: HuggingFace caches partial downloads. Delete the incomplete cache: <code>rm -rf ~/.cache/huggingface/hub/models--*incomplete*</code>. Then retry. For large models (70B+), use <code>huggingface-cli download</code> separately before running the demo.</p>
+
+<p><strong>Q: Can I use TT-Metal on WSL (Windows Subsystem for Linux)?</strong><br>
+A: No. WSL does not support PCIe passthrough for accelerator cards. TT-Metal requires bare-metal Linux or a VM with full PCIe passthrough (IOMMU/VT-d). Standard virtual machines (VirtualBox, WSL, cloud VMs without GPU passthrough) will not work.</p>
+
+<p><strong>Q: I get "No module named ttnn" but I installed it.</strong><br>
+A: (1) Source build: you forgot <code>source python_env/bin/activate</code>. (2) pip install: you're using a different Python than the one pip installed to. Check: <code>which python</code> and <code>pip show ttnn</code>. (3) PYTHONPATH: for source builds, <code>export PYTHONPATH=/path/to/tt-metal</code>.</p>
+
+<p><strong>Q: Minimum Linux kernel version?</strong><br>
+A: Kernel 5.15+ recommended. TT-KMD driver requires a modern kernel with IOMMU support. Check: <code>uname -r</code>. Ubuntu 22.04 ships with 5.15. Ubuntu 24.04 ships with 6.8. Both work. CentOS 7 (kernel 3.10) does NOT work — too old.</p>
+
 <h3>Development</h3>
 <p><strong>Q: ttnn vs tt_lib vs tt_metal — which do I use?</strong><br>
 A: <code>ttnn</code> — always. <code>tt_lib</code> is deprecated. <code>tt_metal</code> is the C++ SDK for kernel development.</p>
