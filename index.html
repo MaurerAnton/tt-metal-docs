@@ -245,6 +245,20 @@
 <pre><code>curl -fsSL https://github.com/tenstorrent/tt-installer/releases/download/v2.1.0/install.sh -O
 bash install.sh</code></pre>
 
+<div class="warning" style="margin-top:1em">
+  <strong>Firmware Compatibility Reference</strong><br>
+  TT-Metal version MUST match firmware version. Mismatched versions cause crashes, hangs, or silent errors.
+</div>
+<table>
+  <tr><th>TT-Metal</th><th>FW Bundle</th><th>KMD Driver</th><th>TT-SMI</th></tr>
+  <tr><td>0.68.0 (next)</td><td>19.2.0</td><td>2.5.0</td><td>3.0.38</td></tr>
+  <tr><td>0.67.4 (latest)</td><td>19.2.0</td><td>2.5.0</td><td>3.0.38</td></tr>
+  <tr><td>0.67.0</td><td>19.2.0</td><td>2.5.0</td><td>3.0.38</td></tr>
+  <tr><td>0.66.0</td><td>19.0.0</td><td>2.4.0</td><td>3.0.36</td></tr>
+</table>
+<p>Check your versions: <code>tt-smi -l | head -3</code>. Update all at once: <code>bash install.sh --smi-version=v3.0.38 --fw-version=19.2.0 --kmd-version=2.5.0</code></p>
+
+
 <h3>3.3. Option A: pip Wheel (Fastest)</h3>
 <pre><code>pip install ttnn
 # For model demos:
@@ -451,6 +465,30 @@ jupyter notebook --no-browser --port=8888
   <tr><td>Products</td><td>e75, e150, e300</td><td>n150, n300</td></tr>
 </table>
 <p>Grayskull kernels use the same Compute API — the compiler selects correct microcode per chip. Most TT-NN ops work on Grayskull, but optimizations and new features are WH/BH only.</p>
+
+
+<h3>3.16. Your First TT-Metal Program (Zero Dependencies)</h3>
+<p>No model download. No HuggingFace. Just the TT card:</p>
+<pre><code>import ttnn
+import torch
+
+device = ttnn.open_device(0)
+
+# Create two small tensors on host
+a = torch.ones((1, 1, 32, 32), dtype=torch.bfloat16) * 3.0
+b = torch.ones((1, 1, 32, 32), dtype=torch.bfloat16) * 2.0
+
+# Move to device, add, bring back
+tt_a = ttnn.from_torch(a, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+tt_b = ttnn.from_torch(b, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+tt_c = ttnn.add(tt_a, tt_b)
+result = ttnn.to_torch(tt_c)
+
+print(f"3.0 + 2.0 = {result[0,0,0,0].item():.1f}")  # Should print: 3.0 + 2.0 = 5.0
+print("TT-Metal is working!")
+
+ttnn.close_device(device)</code></pre>
+<p>If this prints 5.0, your entire stack — driver, firmware, TT-Metal, Python bindings — is working correctly.</p>
 
 <!-- ──────────── STATISTICS ──────────── -->
    137|<h2 id="stats">2. Repository Statistics (Exact Numbers)</h2>
@@ -683,6 +721,18 @@ jupyter notebook --no-browser --port=8888
 
 <!-- ──────────── METALIUM ──────────── -->
 <h2 id="hardware-specs">4. Hardware Specifications & Pricing</h2>
+
+
+<h3>5.0. Terminology: ASIC, Chip, Card, Board</h3>
+<p>These terms are used interchangeably but mean different things:</p>
+<ul>
+  <li><strong>ASIC</strong> (Application-Specific Integrated Circuit) = the physical silicon die. The actual square of silicon with transistors. The Wormhole ASIC has 80 Tensix cores, 12 DRAM channels, Ethernet ports — all on one piece of silicon.</li>
+  <li><strong>Chip</strong> = same as ASIC. Used interchangeably in TT-Metal docs.</li>
+  <li><strong>Card</strong> = the PCIe card you buy. Contains one ASIC + DRAM chips + cooling + PCIe connector. n150 = 1 ASIC on one card. n300 = 2 ASICs on one card.</li>
+  <li><strong>Board</strong> = the PCB (printed circuit board). Synonym for card in most contexts. "n300 board" = the physical card with 2 Wormhole ASICs.</li>
+  <li><strong>System</strong> = multiple cards in a chassis. QuietBox = 8 cards (8 ASICs). Galaxy = 32 cards (32 ASICs).</li>
+</ul>
+<p>When the docs say "n150 has 1 chip" they mean the PCIe card has 1 Wormhole ASIC on it. When they say "n300 has 2 chips" they mean 2 Wormhole ASICs on one board. The n300 is one physical PCIe card — you don't buy two n150s and link them.</p>
 
 <h3>4.1. Wormhole (Current Mainstream)</h3>
 <table>
@@ -1410,6 +1460,40 @@ ttnn.dump_device_profiler(device)  # CSV includes memory per op</code></pre>
    586|<!-- ──────────── RUNNING MODELS ──────────── -->
 <h2 id="running-models">8. Running Models: Commands & Quantization</h2>
 
+
+<h3>8.0. LLM Inference Concepts (Read This First)</h3>
+<p>If you're new to LLM inference, these concepts appear in every model's performance numbers:</p>
+
+<h4>Prefill vs. Decode</h4>
+<ul>
+  <li><strong>Prefill (prompt processing):</strong> The model reads your entire input prompt at once. All tokens are processed in parallel — high compute utilization. This is fast per-token but happens once.</li>
+  <li><strong>Decode (token generation):</strong> The model generates output one token at a time. Each new token depends on all previous tokens (autoregressive). This is slower per-token but runs for many steps.</li>
+  <li><strong>Why it matters:</strong> Short prompts are prefill-bound. Long outputs are decode-bound. Performance numbers usually report decode speed (T/S/U) because that's what the user experiences as generation speed.</li>
+</ul>
+
+<h4>Performance Metrics Explained</h4>
+<table>
+  <tr><th>Metric</th><th>Full Name</th><th>What It Means In Practice</th></tr>
+  <tr><td><strong>T/S/U</strong></td><td>Tokens per Second per User</td><td>How many output tokens the model generates per second for one user. Higher = faster text appears. 50 T/S/U feels instant. 10 T/S/U feels slow.</td></tr>
+  <tr><td><strong>TTFT</strong></td><td>Time To First Token</td><td>How long before the first output token appears after you submit a prompt. Lower = less waiting. 50ms is imperceptible. 500ms is noticeable. 2s is frustrating.</td></tr>
+  <tr><td><strong>TP=8</strong></td><td>Tensor Parallelism (8 chips)</td><td>Model weights split across 8 chips. Each chip handles part of every layer.</td></tr>
+  <tr><td><strong>DP=32</strong></td><td>Data Parallelism (32 chips)</td><td>32 chips each process different prompts with full model copy. 32× throughput.</td></tr>
+</table>
+
+<h4>How to Actually Get Output Text</h4>
+<p>The demos print generated text to stdout. For programmatic access:</p>
+<pre><code># After running a model demo that generates text:
+# The output appears in the pytest stdout. For programmatic use:
+
+from models.tt_transformers.demo.simple_text_demo import generate
+
+output_text = generate(
+    prompt="Explain quantum computing in one sentence.",
+    model_id="meta-llama/Llama-3.2-1B",
+    max_tokens=100
+)
+print(output_text)  # The generated text as a Python string</code></pre>
+
 <h3>8.1. LLM Inference (Unified tt_transformers)</h3>
 <p>The modern way to run LLMs — a single entry point for 40+ models (Llama, Qwen, Mistral, Phi, DeepSeek distill):</p>
 <pre><code>huggingface-cli login
@@ -1478,7 +1562,23 @@ python models/demos/deepseek_v3/scripts/dequantize_hf_checkpoint.py &lt;path_to_
 <p><strong>Weight caching:</strong> First run creates TTNN weight caches (per model, per device) at <code>TT_CACHE_PATH</code> or <code>&lt;HF_MODEL&gt;/&lt;device_name&gt;</code>. Device names: N150, N300, T3K, TG. Subsequent runs skip conversion.</p>
 
 <h3>8.4. Quantization Support</h3>
-<p>TT-Metal uses <strong>block floating-point</strong>, not integer quantization. There is no int8 or int4.</p>
+<p>TT-Metal uses <strong>block floating-point</strong> as its primary quantization. There are also standard IEEE FP8 formats supported for specific models.</p>
+
+<h4>FP8 Explained — All Variants</h4>
+<p>The term "FP8" is ambiguous. There are <strong>3 different FP8 formats</strong> in use across the industry:</p>
+
+<table>
+  <tr><th>Format</th><th>Bits (sign/exp/mant)</th><th>Dynamic Range</th><th>Precision</th><th>Where Used</th></tr>
+  <tr><td><strong>E4M3</strong></td><td>1 / 4 / 3</td><td>±448 (narrower)</td><td>Higher (more mantissa)</td><td>NVIDIA H100/B200 forward pass. DeepSeek-V3 training/inference.</td></tr>
+  <tr><td><strong>E5M2</strong></td><td>1 / 5 / 2</td><td>±57,344 (wider)</td><td>Lower (less mantissa)</td><td>NVIDIA H100/B200 gradients. Good for values that need range (loss, gradients).</td></tr>
+  <tr><td><strong>BFP8 (Block FP8)</strong></td><td>1 / shared_exp / 7</td><td>Per-block (16-64 vals share exponent)</td><td>Medium (more mantissa, shared exp)</td><td><strong>Tenstorrent native.</strong> Used for GEMM, element-wise ops. Called <code>bfloat8_b</code> in TT-NN.</td></tr>
+</table>
+
+<div class="warning">
+  <strong>Critical distinction:</strong> <code>bfloat8_b</code> (BFP8) is NOT the same as IEEE <code>fp8_e4m3</code>. BFP8 shares one exponent across a block of 16-64 values — it's a Tenstorrent invention. IEEE fp8_e4m3 gives each value its own exponent. DeepSeek-V3 uses IEEE fp8_e4m3 and requires a dequantization step to convert to bfloat16 before running on TT hardware.
+</div>
+
+<h4>Tenstorrent Quantization Formats</h4>
 <table>
   <tr><th>Format</th><th>Type</th><th>Use Case</th></tr>
   <tr><td><code>bfloat16</code></td><td>BF16</td><td>Default precision, best accuracy</td></tr>
