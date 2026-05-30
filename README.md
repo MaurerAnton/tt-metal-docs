@@ -1,37 +1,24 @@
 # TT-Metal: The Complete Reference
 
-Live documentation: **[maureranton.github.io/tt-metal-docs](https://maureranton.github.io/tt-metal-docs/)**
+Live: **[maureranton.github.io/tt-metal-docs](https://maureranton.github.io/tt-metal-docs/)**
 
-A deep-dive reference covering everything about [Tenstorrent TT-Metal](https://github.com/tenstorrent/tt-metal) — 24 sections, 133 KB. Designed for absolute beginners through expert bounty hunters.
+24 sections, 176 headings, 147 KB — everything about [Tenstorrent TT-Metal](https://github.com/tenstorrent/tt-metal). Beginners to experts.
 
-**Sections:**
-1. Overview — what TT-Metal is
-2. Setup — 4 install methods, requirements, emulation
-3. After Unboxing — first-time flow, device naming, reset
-4. Repository Statistics — exact file/line counts by language and module
-5. Hardware Architecture — Tensix cores, RISC-V, NoC, tile computing
-6. Hardware Specs & Pricing — WH/BH specs, prices, cloud, context limits
-7. Buying Guide — which card, active vs passive, cables, decision matrix
-8. Metalium SDK — low-level: kernels, circular buffers, SPMD, MPMD, fast dispatch
-9. End-to-End Programming — complete Python and C++ host programs
-10. PyTorch Interop — mixed execution, format conversion, ttnn vs tt_lib, root/concurrency/OOM/PCIe
-11. TT-NN — high-level operator library, 33 categories
-12. TT-Train — training framework, workflow, autograd/optimizers
-13. Models — 50+ models with performance benchmarks
-14. Running Models — launch commands, weights, quantization, model porting guide
-15. Build System — CMake, build flags, code quality tools
-16. Testing — pytest/GTest, 887 YAML configs, test directory structure
-17. Tools & Debugging — 10 tools, graph capture, TT-NN Visualizer
-18. Ecosystem — TT-Forge, TT-XLA, TT-MLIR, TT-TVM, vLLM Plugin, TT-Blacksmith
-19. Community & Contributing — Discord, GitHub, contribution process, version management
-20. Bounty Program — paid bounties, categories, workflow
-21. File Type Breakdown — 20 extensions with exact counts
-22. Technical Reports — 26 deep-dive reports available
-23. Limitations & Known Issues — IEEE 754, hardware constraints, performance anti-patterns, dynamic shapes
-24. TT-Metal vs. CUDA — 14-aspect comparison, when to choose which
-25. Glossary — every term defined
-26. Error Handling & Debugging — crash behavior, 7 tools, 7 common errors, profiling workflow
-27. First-Run Troubleshooting — 9 common problems with cause and fix
-28. Attack Surface — bounty hunter vulnerability mapping
+**What's covered (every question a user could ask):**
 
-Generated May 2026 from static analysis of the entire codebase.
+Setup: 5 install methods, system requirements, emulation (tt-emule), after-unboxing flow, device naming, reset.  
+Hardware: architecture deep-dive, WH/BH specs, pricing, buying guide, power/thermal, sub-devices, context limits.  
+Programming: Metalium (SPMD/MPMD, kernels, CBs, fast dispatch, 151 API headers), end-to-end host code (Python + C++), PyTorch interop, format conversion, tensor introspection, ttnn vs tt_lib.  
+TT-NN: 33 operation categories, attention (SDPA), collective comm (CCL), graph capture.  
+Models: 50+ with benchmarks, launch commands for every model type, weight handling, BF4/BF8/FP8 quantization, 7-step porting guide, custom operator development.  
+Training: TT-Train workflow, autograd/optimizers, TT-Blacksmith, mixed precision.  
+Build/Test: CMake, code quality tools, pytest/GTest, 887 YAML configs.  
+Ecosystem: TT-Forge quickstart, TT-XLA, TT-MLIR, TT-TVM, vLLM Plugin, pipeline parallelism (PP+TP+DP).  
+Community: Discord, GitHub, contribution process, version management, bug report guide.  
+Limitations: IEEE 754 gaps, hardware constraints, WH→BH porting, 8 performance anti-patterns, dynamic shapes.  
+Comparison: TT-Metal vs CUDA (14 aspects), when to choose each.  
+Debugging: 7 tools, 7 common errors with fixes, 3-step profiling, 9 first-run problems.  
+Security: RISC-V sandbox model, isolation properties, attack surface map, model co-location warning.  
+Reference: file type breakdown (20 extensions), 26 tech reports, complete glossary, bounty program.
+
+Generated May 2026.
