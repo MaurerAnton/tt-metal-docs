@@ -105,6 +105,7 @@
   <a href="#vs-cuda">vs CUDA</a>
   <a href="#glossary">Glossary</a>
   <a href="#error-handling">Debug</a>
+  <a href="#faq">FAQ</a>
   <a href="#attack-surface">Security</a>
 </nav>
    100|
@@ -117,6 +118,77 @@
    107|</div>
    108|
    109|<!-- ──────────── OVERVIEW ──────────── -->
+
+<!-- ──────────── HOW TO READ ──────────── -->
+<div class="tip" style="margin-bottom:0">
+  <strong>How to read this document — 3 learning paths:</strong>
+</div>
+
+<div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);margin-bottom:8px">
+  <div class="stat-card" style="text-align:left;padding:12px;border-left:3px solid var(--stat)">
+    <div class="num" style="font-size:1.1em">[B] I just want to run a model</div>
+    <div class="label" style="text-align:left;margin-top:6px;line-height:1.7">
+      1. <a href="#getting-started">Setup</a> — install<br>
+      2. <a href="#hardware-specs">Specs</a> — check your hardware<br>
+      3. <a href="#running-models">Run Models</a> — pick and launch<br>
+      4. <a href="#first-run">Troubleshooting</a> — if stuck<br>
+      <em>Skip: Metalium, Build, Tests, Limits</em>
+    </div>
+  </div>
+  <div class="stat-card" style="text-align:left;padding:12px;border-left:3px solid var(--hd)">
+    <div class="num" style="font-size:1.1em">[I] I want to write code</div>
+    <div class="label" style="text-align:left;margin-top:6px;line-height:1.7">
+      1. <a href="#hardware">HW Architecture</a> — understand the device<br>
+      2. <a href="#metalium">Metalium</a> — low-level programming<br>
+      3. <a href="#end-to-end">Code Examples</a> — host programs<br>
+      4. <a href="#ttnn">TT-NN</a> — high-level ops<br>
+      5. <a href="#error-handling">Debug</a> — fix problems
+    </div>
+  </div>
+  <div class="stat-card" style="text-align:left;padding:12px;border-left:3px solid var(--accent)">
+    <div class="num" style="font-size:1.1em">[E] I want to go deep</div>
+    <div class="label" style="text-align:left;margin-top:6px;line-height:1.7">
+      1. <a href="#limitations">Limits</a> — what&#39;s possible<br>
+      2. <a href="#vs-cuda">vs CUDA</a> — tradeoffs<br>
+      3. <a href="#ecosystem">Ecosystem</a> — full stack<br>
+      4. <a href="#attack-surface">Security</a> — isolation model<br>
+      5. <a href="#glossary">Glossary</a> — every term
+    </div>
+  </div>
+</div>
+
+<div class="toc" style="margin:0.5em 0 1.5em;padding:12px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px">
+  <strong style="color:var(--hd);font-size:1.05em">Full Table of Contents</strong>
+  <small style="color:var(--muted);margin-left:8px">[B]=Beginner [I]=Intermediate [E]=Expert [!]=Important</small>
+  <p></p>
+  <a href="#overview">[B] 1. What Is TT-Metal?</a>
+  <a href="#getting-started">[B] 2. Setup &amp; Installation</a>
+  <a href="#stats">[B] 3. Repository Statistics</a>
+  <a href="#hardware">[I] 4. Hardware Architecture</a>
+  <a href="#hardware-specs">[B] 5. Hardware Specs &amp; Pricing</a>
+  <a href="#metalium">[I] 6. Metalium SDK</a>
+  <a href="#end-to-end">[I] 7. End-to-End Programming</a>
+  <a href="#ttnn">[I] 8. TT-NN Operator Library</a>
+  <a href="#tt-train">[I] 9. TT-Train Framework</a>
+  <a href="#models">[B] 10. Model Implementations</a>
+  <a href="#running-models">[B] 11. Running Models</a>
+  <a href="#build">[I] 12. Build System</a>
+  <a href="#tests">[I] 13. Testing Framework</a>
+  <a href="#tools">[I] 14. Tools &amp; Debugging</a>
+  <a href="#ecosystem">[E] 15. Software Ecosystem</a>
+  <a href="#community">[B] 16. Community &amp; Contributing</a>
+  <a href="#bounties">[B] 17. Bounty Program</a>
+  <a href="#files">[I] 18. File Type Breakdown</a>
+  <a href="#reports">[E] 19. Technical Reports</a>
+  <a href="#limitations">[!] 20. Limitations &amp; Known Issues</a>
+  <a href="#vs-cuda">[E] 21. TT-Metal vs. CUDA</a>
+  <a href="#glossary">[B] 22. Glossary</a>
+  <a href="#error-handling">[!] 23. Error Handling &amp; Debugging</a>
+  <a href="#faq">[B] 24. FAQ</a>
+  <a href="#attack-surface">[E] 25. Attack Surface</a>
+</div>
+
+
    110|<h2 id="overview">1. What Is TT-Metal?</h2>
    111|
    112|<p>
@@ -439,7 +511,31 @@ jupyter notebook --no-browser --port=8888
    192|  <span class="tag">embedding_backward</span>
    193|</div>
    194|
-   195|<!-- ──────────── HARDWARE ──────────── -->
+   195|
+<h3>4.4. Why This Architecture? — Design Rationale</h3>
+<div class="tip">
+  <strong>Understanding the &quot;why&quot; is as important as the &quot;what.&quot;</strong> Every design choice in TT hardware has a reason. Here they are.
+</div>
+
+<h4>Why 32x32 tiles?</h4>
+<p>Deep learning matrix dimensions are almost always multiples of 32 (or easily padded). 32x32 fits key GEMM dimensions exactly, keeps SRAM usage low (a bf16 tile is 2 KB), and maximizes compute throughput. Larger tiles would waste SRAM. Smaller tiles would increase dispatch overhead. 32x32 is the sweet spot validated across thousands of models.</p>
+
+<h4>Why 5 RISC-V cores per Tensix, not 1 big one?</h4>
+<p>The 5 cores form a hardware pipeline: Reader (DM0) → Unpack → Math → Pack → Writer (DM1). Each core specializes in one stage. This is not general-purpose computing — it's a <strong>deterministic dataflow engine</strong>. Splitting into 5 means each core does one thing with minimal context switching. The cores are tiny RV32IM processors (no FPU) because they don't compute — they dispatch instructions to the real compute engines (FPU/SFPU).</p>
+
+<h4>Why no cache hierarchy?</h4>
+<p>Caches are unpredictable — you never know if data is in L1, L2, or DRAM. For AI accelerators, <strong>deterministic latency is more valuable than average throughput</strong>. By making all SRAM explicit scratchpad memory, TT hardware guarantees: (1) you know exactly where every byte lives, (2) latency is constant, (3) no cache coherency protocols needed. The tradeoff: you must manage data movement explicitly — the hardware won't do it for you.</p>
+
+<h4>Why Ethernet instead of NVLink?</h4>
+<p>NVLink is proprietary and NVIDIA-only. Ethernet is an open standard — any chip can connect to any other chip, any switch, any network. This means: (1) no vendor lock-in, (2) standard networking equipment works, (3) scale-out to data-center sizes uses the same infrastructure as cloud networking. 800 Gbps Ethernet is fast enough that the interconnect is rarely the bottleneck for inference.</p>
+
+<h4>Why block floating-point (BFP) instead of INT8?</h4>
+<p>INT8 quantization requires per-tensor or per-channel scale factors and careful calibration. BFP shares an exponent across a block of values — simpler to implement in hardware, naturally handles the dynamic range of neural network activations, and integrates cleanly with the tile-based architecture. BFP8 gives 1.5-1.8x speedup over BF16 with minimal accuracy loss — no calibration step needed.</p>
+
+<h4>Why SPMD as the default model?</h4>
+<p>In AI workloads, every data sample goes through the same operations. SPMD (same program, different data) maps perfectly to this pattern. Each Tensix core runs identical code on its slice of the tensor. No need for complex work-stealing schedulers or dynamic load balancing — the work is statically partitioned. Explicit per-core runtime args give the programmer full control without GPU-style thread index magic.</p>
+
+<!-- ──────────── HARDWARE ──────────── -->
    196|<h2 id="hardware">3. Tenstorrent Hardware Architecture</h2>
    197|
    198|<div class="tip">
@@ -459,7 +555,61 @@ jupyter notebook --no-browser --port=8888
    212|
    213|<p>Example Wormhole chip layout: rows and columns of [T, T, T, T, D, T, E, ...] forming a NoC grid. The exact layout varies by chip generation.</p>
    214|
-   215|<h3>3.2. The Tensix Core — Deep Dive</h3>
+   215|
+<h3>3.2. Chip Layout — Visual Map</h3>
+<pre><code>                    TENSTorrent WORMHOLE Chip (10 x 12 grid)
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  D  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  E  |  D  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  T  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  T  |  T  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  T  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  T  |  T  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  T  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  T  |  T  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  D  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  E  |  D  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  T  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  T  |  T  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  T  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  T  |  T  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |  D  |  T  |  T  |  T  |  T  |  E  |  T  |  T  |  T  |  T  |  E  |  D  |
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+    Legend:  T = Tensix Core (compute)    D = DRAM Controller (memory)
+             E = Ethernet (networking)    A = ARC (management, on edge)
+             P = PCIe (host interface, bottom edge)
+
+    ~72 usable Tensix cores    ~12 DRAM channels    6 Ethernet ports
+    108 MB SRAM total          12 GB GDDR6          QSFP-DD 200G each
+</code></pre>
+
+<h4>Tensix Core — Internal Architecture</h4>
+<pre><code>              ┌─────────────────────────────────────────┐
+              │              TENSIX CORE                  │
+              │                                           │
+  NoC0 ──────>│ DM0 (Reader)    DM1 (Writer)  ──────> NoC1 │
+              │   RISC-V           RISC-V                 │
+              │     │                 ▲                    │
+              │     ▼                 │                    │
+              │  ┌──────┐    ┌──────┐  │                    │
+              │  │ CBin │───>│ Unpk │──│─── SrcA/SrcB     │
+              │  └──────┘    └──────┘  │     (registers)    │
+              │     ▲                   │        │           │
+              │     │              ┌────┴────┐   ▼           │
+              │     │              │  MATH    │ FPU+SFPU    │
+              │     │              │ (RISC-V) │ (engines)   │
+              │     │              └────┬────┘   │           │
+              │     │                   │        ▼           │
+              │     │    ┌──────┐       └───> Dst          │
+              │     └────│ CBout│<─────── PACK │ (registers)│
+              │          └──────┘        (RISC-V)           │
+              │                                             │
+              │  1.5 MB SRAM (L1 scratchpad, NOT cache)     │
+              └─────────────────────────────────────────────┘
+</code></pre>
+
+<h3>3.2. The Tensix Core — Deep Dive</h3>
    216|<p>This is the central computational unit. <strong>One Tensix core</strong> contains:</p>
    217|<table>
    218|  <tr><th>Component</th><th>Count</th><th>Purpose</th></tr>
@@ -1364,6 +1514,24 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
   <tr><td><code>HIFI4_FP32</code></td><td>Slowest</td><td>Maximum — FP32 accumulation</td></tr>
 </table>
 
+<h4>Precision Decision Tree</h4>
+<pre><code>Start with BF16 (HiFi4) — always correct:
+    │
+    ├─ Need more speed? → Try BFP8 (HiFi2) for GEMM layers
+    │   │
+    │   ├─ Accuracy OK? → Keep BFP8 for MLP, BF16 for attention ✓
+    │   └─ Accuracy bad? → Stay BF16 for all attention/softmax/layernorm
+    │
+    └─ Need even more speed? → Try BFP4 (LoFi) for GEMM only
+        │
+        ├─ Accuracy OK? → BFP4 for FF1+FF3, BFP8 for FF2+attention ✓
+        └─ Accuracy bad? → Fall back to BFP8
+
+    NEVER use BFP4 for: attention (SDPA), softmax, layer_norm, rms_norm
+    NEVER use BFP8 below HiFi2 for: softmax stability
+    ALWAYS verify: run same input through PyTorch BF16 and compare outputs</code></pre>
+
+
 <h3>8.5. How to Port a New Model to TT-Metal</h3>
 
 <p>There is no single "porting wizard," but the general workflow is well-established:</p>
@@ -1417,6 +1585,40 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
 <p>For systems spanning multiple host servers, <strong>tt-Fabric</strong> routes traffic between 32-chip boxes over standard Ethernet (up to 800 Gbps). The DeepSeek-V3 demo runs on 2× Galaxy (64 chips across 2 hosts):</p>
 <pre><code>./models/demos/deepseek_v3/scripts/launch_multihost_galaxy.py 2x -- \\
   python models/demos/deepseek_v3/demo/demo.py --model-path $DEEPSEEK_V3_HF_MODEL</code></pre>
+
+
+<h4>Parallelism Decision Tree</h4>
+<pre><code>Model fits on 1 chip?
+    │
+    ├─ YES → Single chip (n150/p150). Done. ✓
+    │
+    └─ NO → Need multiple chips:
+        │
+        ├─ Weights exceed 1 chip's DRAM?
+        │   └─ YES → Tensor Parallel (TP)
+        │       Split each layer across chips. Chips sync activations.
+        │       Example: Llama 70B at TP=8 (8 chips)
+        │
+        ├─ High throughput needed (many requests)?
+        │   └─ YES → Data Parallel (DP)
+        │       Each chip runs full model copy on different batches.
+        │       Example: Falcon 7B at DP=32 (32 chips, 13,517 T/S)
+        │
+        ├─ Model too deep for TP alone?
+        │   └─ YES → Pipeline Parallel (PP)
+        │       Split layers across chips. Chip 0: layers 0-7, Chip 1: layers 8-15.
+        │
+        └─ Maximum scale?
+            └─ TP + PP + DP (3D parallelism)
+                TP within node, PP across nodes, DP across node groups.
+                Used for largest training workloads (DeepSeek-V3, Llama 405B)
+
+    Rule of thumb:
+    - &lt;8B params: single n150/p150
+    - 8B-13B: n300 or single p150
+    - 13B-70B: TP across 8 chips (QuietBox)
+    - 70B+: TP+PP across 32+ chips (Galaxy)
+</code></pre>
 
 <p>Build with distributed support (default): OpenMPI required. Tech reports: "TT-Fabric Architecture," "TT-Distributed Architecture," "Programming Mesh of Devices," "Programming Multiple Meshes."</p>
 
@@ -2200,6 +2402,171 @@ output = run_inference_safe(lambda dev: my_model.generate(dev, prompt))</code></
 </div>
 
 <!-- ──────────── ATTACK SURFACE ──────────── -->
+
+<!-- ──────────── FAQ ──────────── -->
+<h2 id="faq">24. FAQ — Frequently Asked Questions</h2>
+
+<h3>General</h3>
+<p><strong>Q: Can I replace my NVIDIA GPU with a TT card?</strong><br>
+A: For LLM inference, yes — and at lower cost per token. For training or general CUDA workloads, the ecosystem is less mature. See <a href="#vs-cuda">TT-Metal vs. CUDA</a>.</p>
+
+<p><strong>Q: Do I need to know C++ to use TT-Metal?</strong><br>
+A: No. <code>pip install ttnn</code> gives you a Python API similar to PyTorch. C++ is only needed for custom kernel development.</p>
+
+<p><strong>Q: Can I use TT-Metal without hardware?</strong><br>
+A: Yes — <a href="#getting-started">tt-emule</a> emulates the hardware in software on x86-64 Linux.</p>
+
+<p><strong>Q: Is TT-Metal open source?</strong><br>
+A: Yes, Apache 2.0. The full stack is on <a href="https://github.com/tenstorrent/tt-metal">GitHub</a>.</p>
+
+<h3>Hardware</h3>
+<p><strong>Q: Which card should I buy?</strong><br>
+A: See the <a href="#hardware-specs">Buying Guide</a>. For most: n300 ($1,399) for 7B-class LLMs, p150a ($1,399) for maximum performance.</p>
+
+<p><strong>Q: Will TT cards work in my desktop PC?</strong><br>
+A: Yes — all cards are standard PCIe. n150/p100/p150 need one PCIe x16 slot + one power connector. Active cooling cards (d/a suffix) are self-contained.</p>
+
+<p><strong>Q: Do I need special cooling?</strong><br>
+A: Active-cooled cards (n150d, p150a) handle themselves. Passive cards (n150s, p150b) need server chassis airflow. See Power &amp; Thermal section.</p>
+
+<p><strong>Q: How do I connect multiple cards?</strong><br>
+A: Wormhole n300 is pre-linked (2 chips on one board). Blackhole p150 cards link via QSFP-DD 800G cables ($200/0.5m). You cannot link two separate n150 cards.</p>
+
+<h3>Models</h3>
+<p><strong>Q: What's the largest model I can run on one card?</strong><br>
+A: n150 (12 GB): Llama 3.1 8B at 4K context. p150 (32 GB): 8B at 128K, or 11B at 4K. For 70B models, you need 8+ chips.</p>
+
+<p><strong>Q: How do I check if my model is supported?</strong><br>
+A: Visit <a href="https://tenstorrent.com/developers">tenstorrent.com/developers</a> for the compatibility matrix. Standard transformers (Llama, Qwen, Mistral, Phi) are well-supported.</p>
+
+<p><strong>Q: How do I convert my HuggingFace model?</strong><br>
+A: Set <code>HF_MODEL=org/model</code> and run — weights are auto-converted on first use. See <a href="#running-models">Running Models</a>.</p>
+
+<p><strong>Q: Does TT-Metal support training?</strong><br>
+A: Yes — TT-Train provides autograd and optimizers. Less mature than inference. See <a href="#tt-train">TT-Train</a> and <a href="#ecosystem">TT-Blacksmith</a>.</p>
+
+<h3>Performance</h3>
+<p><strong>Q: How fast is inference compared to NVIDIA?</strong><br>
+A: Llama 3.1 8B: 832 T/s on n150 ($999) vs ~1,200 T/s on A100 (~$10K). Per-dollar throughput often favors TT for inference. See <a href="#vs-cuda">comparison</a>.</p>
+
+<p><strong>Q: Why is my model slow?</strong><br>
+A: Check: (1) Are you using all cores? (2) Are CBs sized for pipelining? (3) Is fast dispatch enabled? (4) Are you using BFP8 instead of BF16? See <a href="#limitations">Performance Anti-Patterns</a>.</p>
+
+<p><strong>Q: Can I use BFP4 for everything?</strong><br>
+A: No. BFP4 is 2-3.5x faster but produces garbage for attention, softmax, and layernorm. Use it only for GEMM. See <a href="#running-models">Quantization</a>.</p>
+
+<h3>Troubleshooting</h3>
+<p><strong>Q: My device is not detected. What do I do?</strong><br>
+A: Run <code>tt-smi -l</code>. Check PCIe seating, power cables, IOMMU in BIOS. <code>lsmod | grep tenstorrent</code> to verify driver. Reboot if needed.</p>
+
+<p><strong>Q: I get "Permission denied" on /dev/tenstorrent.</strong><br>
+A: <code>sudo usermod -aG tenstorrent $USER</code> — log out and back in.</p>
+
+<p><strong>Q: Model runs but output is garbage.</strong><br>
+A: (1) Check precision — use BF16 first. (2) Verify <code>huggingface-cli login</code>. (3) Check tensor shapes are 32-aligned. (4) Run <code>python -m ttnn.examples.usage.run_op_on_device</code>.</p>
+
+<p><strong>Q: Kernel hangs / times out.</strong><br>
+A: Watcher detects hangs in ~2s. Run <code>tt-smi -r</code> to reset. Reduce to 1 core, 1 tile, BF16. See <a href="#error-handling">Error Handling</a>.</p>
+
+<p><strong>Q: Where do I ask for help?</strong><br>
+A: <a href="https://discord.gg/tenstorrent">Discord</a> (5,371 members) for real-time help. <a href="https://github.com/tenstorrent/tt-metal/issues">GitHub Issues</a> for bugs. <a href="https://github.com/tenstorrent/tt-metal/discussions">GitHub Discussions</a> for Q&amp;A.</p>
+
+<h3>Development</h3>
+<p><strong>Q: ttnn vs tt_lib vs tt_metal — which do I use?</strong><br>
+A: <code>ttnn</code> — always. <code>tt_lib</code> is deprecated. <code>tt_metal</code> is the C++ SDK for kernel development.</p>
+
+<p><strong>Q: How do I switch TT-Metal versions?</strong><br>
+A: <code>pip install ttnn==0.67.4</code> or <code>git checkout v0.67.4</code>. Keep firmware aligned. See <a href="#community">Version Management</a>.</p>
+
+<p><strong>Q: Can I contribute? How?</strong><br>
+A: Yes! Open an issue, create a branch, submit a PR. No CLA needed. See <a href="#community">Contributing</a>. Bounties available.</p>
+
+<p><strong>Q: Can I use TT-Metal with PyTorch in the same script?</strong><br>
+A: Yes — <code>ttnn.from_torch()</code> and <code>ttnn.to_torch()</code> bridge between them. Keep GPU and TT pipelines separate. See <a href="#end-to-end">PyTorch Interop</a>.</p>
+
+
+<!-- ──────────── FAQ ──────────── -->
+<h2 id="faq">24. FAQ — Frequently Asked Questions</h2>
+
+<h3>General</h3>
+<p><strong>Q: Can I replace my NVIDIA GPU with a TT card?</strong><br>
+A: For LLM inference, yes — and at lower cost per token. For training or general CUDA workloads, the ecosystem is less mature. See <a href="#vs-cuda">TT-Metal vs. CUDA</a>.</p>
+
+<p><strong>Q: Do I need to know C++ to use TT-Metal?</strong><br>
+A: No. <code>pip install ttnn</code> gives you a Python API similar to PyTorch. C++ is only needed for custom kernel development.</p>
+
+<p><strong>Q: Can I use TT-Metal without hardware?</strong><br>
+A: Yes — <a href="#getting-started">tt-emule</a> emulates the hardware in software on x86-64 Linux.</p>
+
+<p><strong>Q: Is TT-Metal open source?</strong><br>
+A: Yes, Apache 2.0. The full stack is on <a href="https://github.com/tenstorrent/tt-metal">GitHub</a>.</p>
+
+<h3>Hardware</h3>
+<p><strong>Q: Which card should I buy?</strong><br>
+A: See the <a href="#buying-guide">Buying Guide</a>. For most: n300 ($1,399) for 7B-class LLMs, p150a ($1,399) for maximum performance.</p>
+
+<p><strong>Q: Will TT cards work in my desktop PC?</strong><br>
+A: Yes — all cards are standard PCIe. n150/p100/p150 need one PCIe x16 slot + one power connector. Active cooling cards (d/a suffix) are self-contained.</p>
+
+<p><strong>Q: Do I need special cooling?</strong><br>
+A: Active-cooled cards (n150d, p150a) handle themselves. Passive cards (n150s, p150b) need server chassis airflow. See <a href="#power-thermal">Power &amp; Thermal</a>.</p>
+
+<p><strong>Q: How do I connect multiple cards?</strong><br>
+A: Wormhole n300 is pre-linked (2 chips on one board). Blackhole p150 cards link via QSFP-DD 800G cables ($200/0.5m). You cannot link two separate n150 cards.</p>
+
+<h3>Models</h3>
+<p><strong>Q: What's the largest model I can run on one card?</strong><br>
+A: n150 (12 GB): Llama 3.1 8B at 4K context. p150 (32 GB): 8B at 128K, or 11B at 4K. For 70B models, you need 8+ chips.</p>
+
+<p><strong>Q: How do I check if my model is supported?</strong><br>
+A: Visit <a href="https://tenstorrent.com/developers">tenstorrent.com/developers</a> for the compatibility matrix. Standard transformers (Llama, Qwen, Mistral, Phi) are well-supported.</p>
+
+<p><strong>Q: How do I convert my HuggingFace model?</strong><br>
+A: Set <code>HF_MODEL=org/model</code> and run — weights are auto-converted on first use. See <a href="#running-models">Running Models</a>.</p>
+
+<p><strong>Q: Does TT-Metal support training?</strong><br>
+A: Yes — TT-Train provides autograd and optimizers. Less mature than inference. See <a href="#tt-train">TT-Train</a> and <a href="#ecosystem">TT-Blacksmith</a>.</p>
+
+<h3>Performance</h3>
+<p><strong>Q: How fast is inference compared to NVIDIA?</strong><br>
+A: Llama 3.1 8B: 832 T/s on n150 ($999) vs ~1,200 T/s on A100 (~$10K). Per-dollar throughput often favors TT for inference. See <a href="#vs-cuda">comparison</a>.</p>
+
+<p><strong>Q: Why is my model slow?</strong><br>
+A: Check: (1) Are you using all cores? (2) Are CBs sized for pipelining? (3) Is fast dispatch enabled? (4) Are you using BFP8 instead of BF16? See <a href="#performance-anti">Performance Anti-Patterns</a>.</p>
+
+<p><strong>Q: Can I use BFP4 for everything?</strong><br>
+A: No. BFP4 is 2-3.5x faster but produces garbage for attention, softmax, and layernorm. Use it only for GEMM. See <a href="#quantization">Quantization</a>.</p>
+
+<h3>Troubleshooting</h3>
+<p><strong>Q: My device is not detected. What do I do?</strong><br>
+A: Run <code>tt-smi -l</code>. Check PCIe seating, power cables, IOMMU in BIOS. <code>lsmod | grep tenstorrent</code> to verify driver. Reboot if needed.</p>
+
+<p><strong>Q: I get "Permission denied" on /dev/tenstorrent.</strong><br>
+A: <code>sudo usermod -aG tenstorrent $USER</code> — log out and back in.</p>
+
+<p><strong>Q: Model runs but output is garbage.</strong><br>
+A: (1) Check precision — use BF16 first. (2) Verify <code>huggingface-cli login</code>. (3) Check tensor shapes are 32-aligned. (4) Run the built-in verification: <code>python -m ttnn.examples.usage.run_op_on_device</code>.</p>
+
+<p><strong>Q: Kernel hangs / times out.</strong><br>
+A: Watcher detects hangs in ~2s. Run <code>tt-smi -r</code> to reset. Reduce to 1 core, 1 tile, BF16. See <a href="#error-handling">Error Handling</a>.</p>
+
+<p><strong>Q: Where do I ask for help?</strong><br>
+A: <a href="https://discord.gg/tenstorrent">Discord</a> (5,371 members) for real-time help. <a href="https://github.com/tenstorrent/tt-metal/issues">GitHub Issues</a> for bugs. <a href="https://github.com/tenstorrent/tt-metal/discussions">GitHub Discussions</a> for Q&amp;A.</p>
+
+<h3>Development</h3>
+<p><strong>Q: ttnn vs tt_lib vs tt_metal — which do I use?</strong><br>
+A: <code>ttnn</code> — always. <code>tt_lib</code> is deprecated. <code>tt_metal</code> is the C++ SDK for kernel development.</p>
+
+<p><strong>Q: How do I switch TT-Metal versions?</strong><br>
+A: <code>pip install ttnn==0.67.4</code> or <code>git checkout v0.67.4</code>. Keep firmware aligned. See <a href="#community">Version Management</a>.</p>
+
+<p><strong>Q: Can I contribute? How?</strong><br>
+A: Yes! Open an issue, create a branch, submit a PR. No CLA needed. See <a href="#community">Contributing</a>. Bounties available.</p>
+
+<p><strong>Q: Can I use TT-Metal with PyTorch in the same script?</strong><br>
+A: Yes — <code>ttnn.from_torch()</code> and <code>ttnn.to_torch()</code> bridge between them. Keep GPU and TT pipelines separate. See <a href="#pytorch-interop">PyTorch Interop</a>.</p>
+
+
    822|<h2 id="attack-surface">15. Attack Surface for Bug Bounty Hunters</h2>
    823|
    824|<div class="warning">
