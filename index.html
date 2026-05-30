@@ -85,27 +85,27 @@
     85|<body>
     86|
     87|<nav>
+  <a href="#overview">Overview</a>
   <a href="#getting-started">Setup</a>
   <a href="#stats">Stats</a>
-  <a href="#hardware">Hardware Arch</a>
-  <a href="#hardware-specs">Specs & Pricing</a>
+  <a href="#hardware">HW Arch</a>
+  <a href="#hardware-specs">Specs</a>
   <a href="#metalium">Metalium</a>
-  <a href="#end-to-end">Programming</a>
+  <a href="#end-to-end">Code</a>
   <a href="#ttnn">TT-NN</a>
   <a href="#models">Models</a>
-  <a href="#running-models">Run Models</a>
+  <a href="#running-models">Run</a>
   <a href="#build">Build</a>
   <a href="#tests">Tests</a>
   <a href="#tools">Tools</a>
+  <a href="#ecosystem">Ecosystem</a>
   <a href="#community">Community</a>
   <a href="#bounties">Bounties</a>
-  <a href="#files">Files</a>
-  <a href="#reports">Reports</a>
-  <a href="#limitations">Limitations</a>
+  <a href="#limitations">Limits</a>
   <a href="#vs-cuda">vs CUDA</a>
   <a href="#glossary">Glossary</a>
-  <a href="#error-handling">Debugging</a>
-  <a href="#attack-surface">Bounty Surface</a>
+  <a href="#error-handling">Debug</a>
+  <a href="#attack-surface">Bounty</a>
 </nav>
    100|
    101|<h1>TT-Metal: The Complete Reference</h1>
@@ -715,7 +715,33 @@ tt-smi -tr 0       # Reset device 0 only
    423|    SetRuntimeArgs(program, writer, core, {c_addr, work_per_core, core_id});
    424|}</code></pre>
    425|
-   426|<h3>4.6. Fast Dispatch vs. Slow Dispatch</h3>
+<h3>4.6. MPMD — Multiple Program Multiple Data</h3>
+<p>While SPMD runs the same kernel on all cores with different args, <strong>MPMD runs different kernels on different cores</strong>. This is used for specialized patterns:</p>
+
+<table>
+  <tr><th>Use Case</th><th>Why MPMD</th></tr>
+  <tr><td><strong>Multicast matmul</strong></td><td>One core broadcasts weights to many compute cores — reader kernel differs from compute kernels</td></tr>
+  <tr><td><strong>Pipeline stages</strong></td><td>Different pipeline stages run on different physical cores — e.g., pre-processing on core (0,0), compute on (0,1)-(7,7), post-processing on (7,7)</td></tr>
+  <tr><td><strong>Heterogeneous grid</strong></td><td>Edge cores handle I/O, interior cores handle compute — different kernels for different positions</td></tr>
+  <tr><td><strong>Collective communication</strong></td><td>All-reduce, scatter, gather need different logic on root vs. worker cores</td></tr>
+</table>
+
+<p>MPMD is configured by compiling different kernels for different core ranges:</p>
+<pre><code>// Reader kernel for all cores
+auto reader = CreateKernel(program, "reader.cpp", all_cores,
+    DataMovementConfig{.processor = DataMovementProcessor::RISCV_0});
+
+// Default compute kernel for most cores
+auto compute = CreateKernel(program, "compute.cpp", core_group_1, ComputeConfig{});
+
+// Special compute kernel for edge cores
+auto compute_edge = CreateKernel(program, "compute_edge.cpp", core_group_2, ComputeConfig{});</code></pre>
+
+<div class="tip">
+  <strong>Most users never need MPMD.</strong> SPMD is the default and sufficient for 95% of workloads. MPMD is for performance-critical patterns where asymmetric core roles provide measurable benefit.
+</div>
+
+   426|<h3>4.7. Fast Dispatch vs. Slow Dispatch</h3>
    427|<table>
    428|  <tr><th>Mode</th><th>Mechanism</th><th>CPU Overhead</th><th>Use Case</th></tr>
    429|  <tr><td>Fast Dispatch (default)</td><td>Dedicated RISC-V core processes command queue; device fetches commands independently</td><td>Low</td><td>Production workloads</td></tr>
@@ -1008,15 +1034,30 @@ tt_tensor = ttnn.from_torch(torch_bf16, dtype=ttnn.bfloat16, layout=ttnn.TILE_LA
    531|<table>
    532|  <tr><th>Subdirectory</th><th>Purpose</th></tr>
    533|  <tr><td><code>tt-train/sources/ttml/</code></td><td>Core TTML library — C++ training primitives</td></tr>
-   534|  <tr><td><code>tt-train/sources/examples/</code></td><td>Training example programs</td></tr>
-   535|  <tr><td><code>tt-train/configs/</code></td><td>Training and model configuration files</td></tr>
-   536|  <tr><td><code>tt-train/tests/</code></td><td>Tests: autograd, ops, optimizers, models, schedulers, tokenizers, serialization</td></tr>
-   537|  <tr><td><code>tt-train/scripts/</code></td><td>Training launch and utility scripts</td></tr>
-   538|  <tr><td><code>tt-train/docs/</code></td><td>Documentation (Mixture of Experts, etc.)</td></tr>
-   539|  <tr><td><code>tt-train/tools/</code></td><td>Profiling and weight utilities</td></tr>
-   540|</table>
-   541|
-   542|<!-- ──────────── MODELS ──────────── -->
+  <tr><td><code>tt-train/sources/examples/</code></td><td>Training example programs</td></tr>
+  <tr><td><code>tt-train/configs/</code></td><td>Training and model configuration files</td></tr>
+  <tr><td><code>tt-train/tests/</code></td><td>Tests: autograd, ops, optimizers, models, schedulers, tokenizers, serialization</td></tr>
+  <tr><td><code>tt-train/scripts/</code></td><td>Training launch and utility scripts</td></tr>
+  <tr><td><code>tt-train/docs/</code></td><td>Documentation (Mixture of Experts, etc.)</td></tr>
+  <tr><td><code>tt-train/tools/</code></td><td>Profiling and weight utilities</td></tr>
+</table>
+
+<h3>6.2. Training Workflow</h3>
+<p>TT-Train provides autograd, optimizers, and training loop infrastructure. A typical training script:</p>
+<ol>
+  <li><strong>Load model:</strong> Using TT-NN or TT-Forge to place the model on device(s)</li>
+  <li><strong>Forward pass:</strong> Data flows through TT-NN operations — all compute on Tenstorrent hardware</li>
+  <li><strong>Loss computation:</strong> Use TT-NN loss ops (cross_entropy, mse, etc.)</li>
+  <li><strong>Backward pass:</strong> TT-Train autograd traces the forward graph and produces gradients</li>
+  <li><strong>Optimizer step:</strong> Apply gradients via optimizers (SGD, Adam, etc.)</li>
+  <li><strong>Data loading:</strong> Host CPU feeds data via PCIe. Keep pipeline full with async transfers (command queue 1)</li>
+</ol>
+
+<div class="warning">
+  <strong>Training is less mature than inference.</strong> TT-Train has 111K lines (vs 541K for TT-NN + 529K for Metalium). Fewer models have been validated for training. For production training, also evaluate TT-Blacksmith (40+ training recipes) and TT-Forge (800+ tested models). Mixed precision training: use bfp8 for forward GEMM, BF16 for weight updates and gradients.
+</div>
+
+<!-- ──────────── MODELS ──────────── -->
    543|<h2 id="models">7. Model Implementations (50+ Models, 796,388 lines)</h2>
    544|
    545|<h3>7.1. Production Models (models/demos/)</h3>
@@ -1167,6 +1208,24 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
   <tr><td><code>HIFI4_FP32</code></td><td>Slowest</td><td>Maximum — FP32 accumulation</td></tr>
 </table>
 
+<h3>8.5. How to Port a New Model to TT-Metal</h3>
+
+<p>There is no single "porting wizard," but the general workflow is well-established:</p>
+
+<ol>
+  <li><strong>Check compatibility first.</strong> Visit <a href="https://tenstorrent.com/developers">tenstorrent.com/developers</a> — the model compatibility matrix shows which models are tested. Standard transformer architectures (Llama, Qwen, Mistral, Phi, BERT) port cleanly. Vision models (ResNet, ViT, SD) are supported. Exotic ops (custom CUDA kernels, sparse attention, dynamic control flow) need custom kernel development.</li>
+  <li><strong>Start in Python with TT-NN.</strong> Write your model using <code>ttnn.matmul()</code>, <code>ttnn.softmax()</code>, <code>ttnn.layer_norm()</code>, <code>ttnn.gelu()</code>, etc. Run with small tensors (1x1x32x32) on a single core first. Use BF16 (HiFi4) precision for correctness.</li>
+  <li><strong>Place in the right directory.</strong> Production-ready models go in <code>models/demos/</code>. Experimental/bring-up models go in <code>models/experimental/</code>. Follow the existing directory conventions (each model gets its own directory with demo scripts, test configs, and weight handling).</li>
+  <li><strong>Handle weights.</strong> Most models load HuggingFace safetensors via the <code>tt_transformers</code> weight loader. Set <code>HF_MODEL=org/model</code> and the first run auto-caches TTNN tensors. For custom formats, write a weight conversion script (see existing examples in <code>models/demos/*/scripts/</code>).</li>
+  <li><strong>Verify correctness.</strong> Compare outputs against PyTorch reference at BF16 precision, tile by tile. Use <code>ttnn.to_torch()</code> to pull results back and <code>torch.allclose()</code> to compare. Tolerance: ~1e-2 for BF16, ~1e-1 for BFP8.</li>
+  <li><strong>Profile and optimize.</strong> Enable the device profiler, check math utilization and CB stalls. Apply quantization (bfp8 for MLP layers, keep BF16 for attention). Use the Tracy profiler for timeline analysis.</li>
+  <li><strong>Scale up.</strong> Start 1 core → all cores on 1 chip → multi-chip (n300, T3K, Galaxy). Use <code>split_work_to_cores()</code> for SPMD distribution. Write a pytest demo following existing conventions.</li>
+</ol>
+
+<div class="tip">
+  <strong>Check existing models for reference.</strong> The <code>tt_transformers</code> demo supports 40+ LLMs with a single entry point — study how new models are added there. For missing ops, you may need to write custom Metalium kernels (see Op Kernel Development tech report).
+</div>
+
 <!-- ──────────── BUILD ──────────── -->
    587|<h2 id="build">8. Build System</h2>
    588|
@@ -1249,11 +1308,37 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
    665|  <tr><td>Watcher</td><td>(bundled)</td><td>Firmware/kernel error monitoring, hang detection</td></tr>
    666|  <tr><td>Inspector</td><td>(bundled)</td><td>Host runtime data queries and logging</td></tr>
    667|  <tr><td>DPRINT</td><td>(bundled)</td><td>Print variables, addresses, CB data from device kernels to host</td></tr>
-   668|  <tr><td>Metal Profiler</td><td>(bundled)</td><td>Device-side performance counters and profiling</td></tr>
-   669|  <tr><td>JIT Compile Server</td><td>(bundled)</td><td>Caches compiled kernel binaries for faster iteration</td></tr>
-   670|</table>
-   671|
-   672|<h3>10.1. Related Tenstorrent Projects</h3>
+  <tr><td><strong>Metal Profiler</strong></td><td>(bundled)</td><td>Device-side performance counters and profiling</td></tr>
+  <tr><td><strong>JIT Compile Server</strong></td><td>(bundled)</td><td>Caches compiled kernel binaries for faster iteration</td></tr>
+</table>
+
+<h3>10.2. Graph Capture & Execution Replay</h3>
+<p>Graph capture lets you record a sequence of operations and replay them as a single optimized program — avoiding per-op dispatch overhead.</p>
+
+<h4>How it works:</h4>
+<ol>
+  <li><strong>Start capture:</strong> Begin recording TT-NN operations</li>
+  <li><strong>Run model:</strong> Execute your model once — all ops are traced into a graph</li>
+  <li><strong>Stop capture:</strong> The graph is compiled into an optimized Metalium program</li>
+  <li><strong>Replay:</strong> Subsequent runs execute the compiled graph directly — no per-op Python/C++ overhead</li>
+</ol>
+
+<h4>Key benefits:</h4>
+<ul>
+  <li><strong>Latency reduction:</strong> Typical 10-30% improvement for repeated inference — eliminates dispatch overhead</li>
+  <li><strong>Memory optimization:</strong> Compiler can fuse operations, eliminate intermediate buffers, optimize CB sizes</li>
+  <li><strong>Production serving:</strong> Used by Stable Diffusion (--with_trace flag) and the vLLM TT Plugin</li>
+</ul>
+
+<h4>Where to find it:</h4>
+<ul>
+  <li>TT-NN C++ API: <code>graph_tracking.hpp</code> — core graph capture infrastructure</li>
+  <li>TT-NN Python: <code>ttnn.begin_trace_capture()</code> / <code>ttnn.end_trace_capture()</code></li>
+  <li>Model demos that use it: Stable Diffusion XL (<code>--with_trace</code> flag), LLM demos</li>
+  <li>Compiler stack: TT-MLIR and TT-Forge use graph capture internally for AOT compilation</li>
+</ul>
+
+<h3>10.3. Related Tenstorrent Projects</h3>
    673|<div style="display:flex;flex-wrap:wrap;gap:8px;margin:1em 0">
    674|  <span class="tag">TT-Forge</span><span class="tag">TT-Forge-FE</span>
    675|  <span class="tag">TT-Torch</span><span class="tag">TT-XLA</span>
@@ -1352,6 +1437,53 @@ conda create -n metalium python=3.10 tt-metalium=0.67.4 -c conda-forge</code></p
 <pre><code>pip show ttnn               # pip installs
 tt-smi -l | head -3         # Firmware/KMD/SMI versions
 python -c "import ttnn; print(ttnn.__version__)"  # Python API version</code></pre>
+
+<!-- ──────────── ECOSYSTEM ──────────── -->
+<h2 id="ecosystem">11. Tenstorrent Software Ecosystem</h2>
+
+<div class="tip">
+  <strong>TT-Metal is the foundation.</strong> A growing suite of compilers, frontends, and serving tools are built on top of it — here's the full map.
+</div>
+
+<h3>11.1. Compiler Stack</h3>
+<table>
+  <tr><th>Project</th><th>What It Does</th><th>Status</th></tr>
+  <tr><td><strong>TT-MLIR</strong></td><td>Core MLIR compiler. Defines TTIR, TTNN, TTKernel dialects. Applies fusion, sharding, layout optimization, lowers to Metalium.</td><td>Active</td></tr>
+  <tr><td><strong>TT-Forge</strong></td><td>Unified AI compiler stack. Frontends (PyTorch/JAX/ONNX) → MLIR → Metalium. 800+ model variants in CI. Installed via <code>pip install tt-forge</code>.</td><td>Active</td></tr>
+  <tr><td><strong>TT-Forge-FE</strong></td><td>Frontend compiler for TT-Forge — ingests PyTorch/JAX/ONNX models.</td><td>Active</td></tr>
+</table>
+
+<h3>11.2. PyTorch / JAX Integration</h3>
+<table>
+  <tr><th>Project</th><th>What It Does</th><th>Status</th></tr>
+  <tr><td><strong>TT-XLA</strong></td><td>PJRT-based frontend for PyTorch and JAX. Compiles to StableHLO → TT-MLIR → Metalium. Supports single and multi-chip. <strong>This is the recommended path for PyTorch 2.0 models.</strong></td><td>Active (replaces TT-Torch)</td></tr>
+  <tr><td><strong>TT-Torch</strong></td><td>PyTorch 2.0 + torch-mlir based frontend. <strong>DEPRECATED</strong> — users redirected to TT-XLA.</td><td>Deprecated</td></tr>
+</table>
+
+<h3>11.3. Model Serving & ONNX</h3>
+<table>
+  <tr><th>Project</th><th>What It Does</th><th>Status</th></tr>
+  <tr><td><strong>vLLM TT Plugin</strong></td><td>vLLM server plugin for production LLM serving on Tenstorrent hardware. Uses TT-NN/TT-Metalium under the hood.</td><td>Active</td></tr>
+  <tr><td><strong>TT-TVM</strong></td><td>Apache TVM fork — compiler frontend for ONNX, TensorFlow, PaddlePaddle models. Single-chip only. Used by TT-Forge-ONNX.</td><td>Active</td></tr>
+</table>
+
+<h3>11.4. Training</h3>
+<table>
+  <tr><th>Project</th><th>What It Does</th><th>Status</th></tr>
+  <tr><td><strong>TT-Blacksmith</strong></td><td>Optimized training recipes. 40+ examples (PyTorch, JAX, Lightning). Built on TT-Train.</td><td>Active</td></tr>
+  <tr><td><strong>TT-Train</strong></td><td>Training framework (bundled in tt-metal). Autograd, optimizers, training utilities. 896 files, 111K lines.</td><td>Active</td></tr>
+</table>
+
+<h3>11.5. Architecture Flow</h3>
+<pre><code>PyTorch / JAX ──> TT-XLA ──> StableHLO ──> TT-MLIR ──> TTIR/TTNN/TTKernel ──> Metalium ──> Hardware
+ONNX / TF    ──> TT-TVM ──> TVM Relay ──> TT-Forge-ONNX ──> Metalium ──> Hardware
+Custom Ops   ──> TT-Lang (Python DSL, early preview) ──> Metalium
+LLM Serving  ──> vLLM TT Plugin ──> TT-NN / Metalium
+Training     ──> TT-Blacksmith ──> TT-Train ──> Metalium</code></pre>
+
+<div class="warning">
+  <strong>TT-Torch is deprecated.</strong> If you see old references to TT-Torch, use TT-XLA instead. <strong>TT-Forge</strong> is the highest-level path: install with <code>pip install tt-forge</code> and get PyTorch/JAX/ONNX support with 800+ tested models.
+</div>
 
 <!-- ──────────── BOUNTIES ──────────── -->
    681|<h2 id="bounties">11. Bounty Program</h2>
@@ -1471,6 +1603,35 @@ python -c "import ttnn; print(ttnn.__version__)"  # Python API version</code></p
   <tr><td>Element-wise (ReLU, GELU)</td><td>Reference</td><td>Negligible</td><td>Negligible</td></tr>
   <tr><td>Softmax / LayerNorm</td><td>Reference</td><td>Use BF16 for these</td><td>Do not quantize</td></tr>
 </table>
+
+<h3>14.5. Performance Anti-Patterns</h3>
+<p>Things that look correct but kill throughput:</p>
+
+<table>
+  <tr><th>Anti-Pattern</th><th>Why It's Slow</th><th>Fix</th></tr>
+  <tr><td>Tensor shapes not 32-aligned</td><td>Padding wastes SRAM and NoC bandwidth. A 50x100 matrix uses 64x128 tiles — 64% overhead.</td><td>Design model dimensions around multiples of 32. Pad at the model architecture level, not per-tensor.</td></tr>
+  <tr><td>Frequent host-device transfers</td><td>PCIe round-trip is expensive. Each <code>to_torch()</code>/<code>from_torch()</code> pair costs microseconds.</td><td>Keep data on device. Batch transfers. Use command queue 1 for I/O asynchronously.</td></tr>
+  <tr><td>Single-core execution</td><td>Only 1/80 (Wormhole) or 1/120 (Blackhole) of compute used. Tensix cores sit idle.</td><td>Use <code>split_work_to_cores()</code>. Always distribute across the full grid unless debugging.</td></tr>
+  <tr><td>LoFi precision on attention/softmax</td><td>BFLOAT4_B for softmax produces garbage. These ops need full dynamic range.</td><td>Keep attention, softmax, layernorm at HiFi4 (BF16). Use BFP8/BFP4 only for GEMM and element-wise.</td></tr>
+  <tr><td>CB size of 1 tile</td><td>No pipelining — reader waits for compute, compute waits for writer. Zero overlap.</td><td>Use at least 2 tiles per CB. For bandwidth-heavy ops, try 4-8 tiles. Measure CB stalls.</td></tr>
+  <tr><td>Not using fast dispatch</td><td>Slow dispatch adds host CPU overhead per operation — 10-100x slower for multi-op workloads.</td><td>Fast dispatch is default. Only use <code>TT_METAL_SLOW_DISPATCH_MODE=1</code> for debugging.</td></tr>
+  <tr><td>Interleaved DRAM for streaming data</td><td>Default layout distributes data across all DRAM controllers — good for random access, bad for sequential.</td><td>Use sharded buffers for producer-consumer streaming patterns. Reduces NoC hops.</td></tr>
+  <tr><td>Re-compiling kernels every run</td><td>Kernel JIT compilation takes seconds per kernel per core.</td><td>JIT Compile Server caches compiled binaries. Pre-compile kernels where possible.</td></tr>
+</table>
+
+<h3>14.6. Dynamic Shapes & Variable-Length Sequences</h3>
+<div class="warning">
+  <strong>TT hardware does not natively support dynamic shapes.</strong> The 32x32 tile is fixed. Every tensor dimension is known at compile time. Changing a tensor shape requires re-compiling the program.
+</div>
+
+<h4>Workarounds:</h4>
+<ul>
+  <li><strong>Pre-allocation:</strong> Models pre-allocate maximum context length buffers and use masking. A model supporting up to 128K context pre-allocates for 128K even when using 1K.</li>
+  <li><strong>KV Cache:</strong> TT-NN has dedicated KV cache operations (in the <code>kv_cache</code> op category) that handle variable-length sequences efficiently — cache grows as tokens are generated.</li>
+  <li><strong>Padding:</strong> Short sequences are padded to the next 32-multiple. The hardware's pack/unpack engines handle padding at zero cost.</li>
+  <li><strong>Batching:</strong> Different sequence lengths in a batch require padding all to the longest. Use attention masks to ignore padding tokens.</li>
+</ul>
+<p>For truly dynamic workloads (variable batch sizes, changing model architectures), consider using TT-Forge or TT-XLA which handle shape polymorphism at the compiler level.</p>
 
 <!-- ──────────── VS CUDA ──────────── -->
 <h2 id="vs-cuda">15. TT-Metal vs. CUDA: Detailed Comparison</h2>
