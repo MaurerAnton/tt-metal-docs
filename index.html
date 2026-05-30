@@ -323,6 +323,63 @@ tt-smi -tr 0       # Reset device 0 only
 # Legacy (deprecated, requires sudo): tt-smi -glx_reset</code></pre>
 <p>Run <code>tt-smi -r</code> between pytest invocations. If a kernel hangs, Watcher detects it within ~2s and the command queue enters error state — subsequent commands are rejected until reset.</p>
 
+<h3>3.13. Docker Setup Details</h3>
+<h4>Running with full device access:</h4>
+<pre><code># Pull the release image
+docker pull ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc
+
+# Run interactively with device passthrough
+docker run -it --rm \\
+  --device /dev/tenstorrent \\
+  --group-add $(getent group tenstorrent | cut -d: -f3) \\
+  -v /mnt/models:/models \\
+  ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc bash</code></pre>
+
+<h4>Docker Compose:</h4>
+<pre><code># docker-compose.yml
+services:
+  tt-inference:
+    image: ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc
+    devices:
+      - /dev/tenstorrent:/dev/tenstorrent
+    volumes:
+      - ./models:/models
+      - ./cache:/root/.cache
+      - ./scripts:/workspace
+    environment:
+      - HF_MODEL=/models/Llama-3.1-8B
+    command: python /workspace/serve.py</code></pre>
+
+<h3>3.14. Remote Development</h3>
+
+<h4>VSCode Remote-SSH:</h4>
+<ul>
+  <li>Install "Remote - SSH" extension, connect to TT machine</li>
+  <li>Open tt-metal folder — full IntelliSense on remote</li>
+  <li>For C++: build with <code>--export-compile-commands</code> for clangd support</li>
+</ul>
+
+<h4>Jupyter Notebook:</h4>
+<pre><code>pip install jupyter
+jupyter notebook --no-browser --port=8888
+# Local: ssh -L 8888:localhost:8888 user@tt-machine
+# Browser: http://localhost:8888</code></pre>
+
+<h3>3.15. Grayskull — Legacy Generation</h3>
+<div class="warning">
+  <strong>Grayskull is legacy.</strong> No longer the primary target. All new development targets Wormhole and Blackhole.
+</div>
+
+<table>
+  <tr><th>Aspect</th><th>Grayskull</th><th>Wormhole</th></tr>
+  <tr><td>Vector width</td><td>64-element</td><td>32-element</td></tr>
+  <tr><td>Floating-point</td><td>19-bit FP (custom)</td><td>32-bit IEEE FP</td></tr>
+  <tr><td>SFPU sin iterations</td><td>4</td><td>8</td></tr>
+  <tr><td>Multi-chip</td><td>Not supported</td><td>Up to 800 Gbps Ethernet</td></tr>
+  <tr><td>Products</td><td>e75, e150, e300</td><td>n150, n300</td></tr>
+</table>
+<p>Grayskull kernels use the same Compute API — the compiler selects correct microcode per chip. Most TT-NN ops work on Grayskull, but optimizations and new features are WH/BH only.</p>
+
 <!-- ──────────── STATISTICS ──────────── -->
    137|<h2 id="stats">2. Repository Statistics (Exact Numbers)</h2>
    138|
@@ -1013,6 +1070,52 @@ tt_tensor.memory_size()    # Bytes consumed on device
   <strong>Shape vs actual size:</strong> <code>tt_tensor.shape</code> returns the padded shape (32-aligned). A tensor created as 50×100 may show shape [64, 128]. The original unpadded shape is accessible but the tensor uses tile-aligned memory.
 </div>
 
+<h3>5.9. Multi-GPU Systems & Python Concurrency</h3>
+
+<h4>Coexisting with NVIDIA/AMD GPUs:</h4>
+<p>TT cards work alongside GPUs in the same system. PyTorch tensors are on CPU by default — they only go to GPU if you call <code>.cuda()</code> and to TT if you call <code>ttnn.from_torch(..., device=tt_device)</code>. The key is explicit device management:</p>
+<pre><code>import torch
+import ttnn
+
+# GPU tensor
+gpu_tensor = torch.randn(32, 32).cuda()
+
+# TT tensor
+tt_device = ttnn.open_device(0)
+tt_tensor = ttnn.from_torch(torch.randn(1, 1, 32, 32), 
+    dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=tt_device)
+
+# They don't interfere — different PCIe devices, different memory spaces
+result_gpu = torch.matmul(gpu_tensor, gpu_tensor.T)  # Runs on GPU
+result_tt = ttnn.gelu(tt_tensor)                       # Runs on TT card</code></pre>
+
+<div class="warning">
+  <strong>Common mistake:</strong> Calling <code>model.cuda()</code> on a PyTorch model, then trying to pass a TT tensor to it. Keep GPU and TT pipelines separate — use <code>ttnn.to_torch()</code> to bridge results back to PyTorch if needed.
+</div>
+
+<h4>Python multiprocessing:</h4>
+<ul>
+  <li><strong>One device per process:</strong> <code>ttnn.open_device(0)</code> is exclusive. Process A opens device 0, process B opens device 1.</li>
+  <li><strong>Use MeshDevice for multi-chip:</strong> Don't try to open the same device from multiple processes.</li>
+  <li><strong>Threading is fine:</strong> Python threads for host-side work (data loading, tokenization) don't conflict with TT device usage — just don't call device APIs from multiple threads simultaneously.</li>
+  <li><strong>Multiprocessing example:</strong> <code>torch.multiprocessing.spawn()</code> with each rank opening <code>ttnn.open_device(rank)</code>.</li>
+</ul>
+
+<h4>Memory leak detection:</h4>
+<pre><code># Check device memory usage
+tt-smi -l                    # Shows per-device memory allocation
+
+# In Python, track tensor lifecycle:
+import gc
+gc.collect()                 # Force garbage collection of released tensors
+ttnn.close_device(device)    # Frees all device memory associated with this session
+
+# The profiler shows per-op memory usage:
+device.enable_profiler()
+# ... run workload ...
+device.disable_profiler()
+ttnn.dump_device_profiler(device)  # CSV includes memory per op</code></pre>
+
 <!-- ──────────── TT-NN ──────────── -->
    461|<h2 id="ttnn">5. TT-NN — The High-Level Operator Library</h2>
    462|
@@ -1316,6 +1419,46 @@ pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1"
   python models/demos/deepseek_v3/demo/demo.py --model-path $DEEPSEEK_V3_HF_MODEL</code></pre>
 
 <p>Build with distributed support (default): OpenMPI required. Tech reports: "TT-Fabric Architecture," "TT-Distributed Architecture," "Programming Mesh of Devices," "Programming Multiple Meshes."</p>
+
+<h4>Streaming token output</h4>
+<p>For LLM inference, tokens are generated one at a time via the KV cache mechanism. To stream tokens as they're produced instead of waiting for the full sequence:</p>
+<pre><code># The tt_transformers demo supports prefilling then streaming:
+# Batch-1 decode mode generates tokens one by one
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and batch-1"
+
+# For programmatic access, use the underlying generate loop:
+# while not done:
+#     logits = model.forward(input_ids, kv_cache)
+#     next_token = sample(logits)
+#     yield tokenizer.decode([next_token])  # Stream to user
+#     input_ids = next_token.unsqueeze(0)</code></pre>
+
+<h3>8.8. Batch Processing Patterns</h3>
+<p>Efficient batching is essential for throughput. TT hardware excels at batch processing because the SPMD model parallelizes naturally:</p>
+
+<h4>Continuous batching (LLM serving):</h4>
+<ul>
+  <li><strong>Prefill:</strong> Process all prompt tokens for all sequences in a batch simultaneously — high compute utilization</li>
+  <li><strong>Decode:</strong> Process one token per sequence per step — lower utilization but unavoidable for autoregressive generation</li>
+  <li><strong>Mixed batch:</strong> Some sequences in prefill, some in decode — vLLM TT Plugin handles this automatically</li>
+</ul>
+
+<h4>Static batching (offline inference):</h4>
+<pre><code># Batch-32 throughput test — 32 prompts processed together
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and batch-32"</code></pre>
+<ul>
+  <li>All prompts padded to same length (attention masks ignore padding)</li>
+  <li>Larger batches = better utilization up to memory limit</li>
+  <li>Wormhole n150: 4-8 batch typical for 8B models, 1-2 for 11B</li>
+</ul>
+
+<h4>Pipelined batching:</h4>
+<pre><code># Use command queue 0 (compute) and queue 1 (data) asynchronously:
+# Queue 1: EnqueueWriteMeshBuffer for batch N+1 data
+# Queue 0: EnqueueMeshWorkload for batch N compute
+# Synchronize with events:
+event = cq0.enqueue_record_event()
+cq1.enqueue_wait_for_event(event)  # Don't overwrite data until compute done</code></pre>
 
 <!-- ──────────── BUILD ──────────── -->
    587|<h2 id="build">8. Build System</h2>
@@ -1989,6 +2132,71 @@ ttnn.dump_device_profiler(device, output_dir="./profile_results")</code></pre>
 
 <div class="tip">
   <strong>Golden debugging rule:</strong> If something doesn't work, reduce to the simplest case: 1 core, 1 tile, 1 operation, BF16 precision. Once that works, scale up one dimension at a time.
+</div>
+
+<h3>16.7. Robust Error Recovery for Inference Pipelines</h3>
+<p>Production inference needs to handle failures gracefully:</p>
+
+<pre><code>import ttnn
+import time
+
+def run_inference_safe(model_fn, max_retries=3):
+    """Run inference with automatic error recovery."""
+    for attempt in range(max_retries):
+        device = None
+        try:
+            device = ttnn.open_device(0)
+            result = model_fn(device)
+            return result
+        except Exception as e:
+            print(f"Attempt {attempt+1} failed: {e}")
+            if device:
+                try:
+                    ttnn.close_device(device)
+                except:
+                    pass
+            # Reset device before retry
+            import subprocess
+            subprocess.run(["tt-smi", "-tr", "0"], timeout=30)
+            time.sleep(2)  # Let device stabilize
+    raise RuntimeError(f"Failed after {max_retries} attempts")
+
+# Usage:
+output = run_inference_safe(lambda dev: my_model.generate(dev, prompt))</code></pre>
+
+<h4>Best practices:</h4>
+<ul>
+  <li><strong>Always close device in finally block:</strong> Ensures cleanup even on crash</li>
+  <li><strong>Reset between runs:</strong> <code>tt-smi -tr 0</code> clears any stuck state</li>
+  <li><strong>Separate process per inference:</strong> Isolate crashes — one bad inference doesn't kill the server</li>
+  <li><strong>Health check endpoint:</strong> Periodically run a small test op to verify the device is responsive</li>
+  <li><strong>Watchdog:</strong> If Watcher detects a hang, the command queue enters error state — you MUST reset before retrying</li>
+</ul>
+
+<h3>16.8. CI/CD with TT Hardware</h3>
+<p>The tt-metal repo uses GitHub Actions for CI. For self-hosted runners with TT cards:</p>
+
+<h4>Repository CI (what runs automatically):</h4>
+<ul>
+  <li><strong>sanity-tests.yaml:</strong> Post-commit — must pass on every PR. Basic op tests, import checks</li>
+  <li><strong>Model tests:</strong> Nightly — runs full model demos on real hardware</li>
+  <li><strong>Profiler tests:</strong> Tracy integration validation</li>
+  <li><strong>vLLM nightly:</strong> End-to-end serving tests</li>
+  <li><strong>Docs build:</strong> Sphinx documentation generation</li>
+</ul>
+
+<h4>Self-hosted runner setup:</h4>
+<pre><code># 1. Install GitHub Actions runner on a machine with TT cards
+# 2. Runner needs: tt-metal installed, tt-smi functional, hugepages configured
+# 3. Workflow runs pytest on real hardware:
+#    - name: Run tests
+#      run: |
+#        source python_env/bin/activate
+#        tt-smi -r  # Reset before test
+#        pytest tests/ --timeout=600</code></pre>
+
+<div class="warning">
+  <strong>CI rules:</strong> Failed post-commit on main gets reverted immediately. <code>[skip ci]</code> in commit message skips CI for docs-only changes (except .rst docs — those must run doc build CI). Only use squash-and-merge or rebase-and-merge.
 </div>
 
 <!-- ──────────── ATTACK SURFACE ──────────── -->
