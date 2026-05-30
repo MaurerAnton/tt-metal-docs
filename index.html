@@ -1,862 +1,1470 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TT-Metal: The Complete Reference — Architecture, Statistics & Deep Dive</title>
-<style>
-  :root {
-    --bg: #0d1117;
-    --fg: #c9d1d9;
-    --hd: #58a6ff;
-    --accent: #f78166;
-    --code-bg: #161b22;
-    --border: #30363d;
-    --card-bg: #161b22;
-    --stat: #7ee787;
-    --warn: #d2991d;
-    --link: #58a6ff;
-    --muted: #8b949e;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--fg); line-height: 1.6;
-    max-width: 1200px; margin: 0 auto; padding: 0 20px;
-  }
-  h1 { font-size: 2.4em; margin: 0.5em 0 0.2em; color: #fff; border-bottom: 2px solid var(--accent); padding-bottom: 0.3em; }
-  h2 { font-size: 1.8em; margin: 1.5em 0 0.5em; color: var(--hd); border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
-  h3 { font-size: 1.4em; margin: 1.2em 0 0.4em; color: #d2a8ff; }
-  h4 { font-size: 1.1em; margin: 0.8em 0 0.3em; color: var(--warn); }
-  p, li { margin: 0.5em 0; }
-  a { color: var(--link); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-    background: var(--code-bg); border-radius: 4px; padding: 1px 5px;
-    font-size: 0.9em; color: var(--stat);
-  }
-  pre {
-    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 16px; overflow-x: auto; margin: 1em 0; font-size: 0.85em;
-    line-height: 1.5;
-  }
-  pre code { background: none; padding: 0; color: var(--fg); }
-  .stat-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px; margin: 1em 0;
-  }
-  .stat-card {
-    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 16px; text-align: center;
-  }
-  .stat-card .num { font-size: 2em; font-weight: 700; color: var(--stat); }
-  .stat-card .label { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
-  .bar-container { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
-  .bar-label { min-width: 120px; text-align: right; font-size: 0.9em; color: var(--muted); }
-  .bar { height: 18px; border-radius: 4px; background: var(--accent); min-width: 4px; }
-  .bar-val { font-size: 0.85em; color: var(--stat); min-width: 80px; }
-  table {
-    width: 100%; border-collapse: collapse; margin: 1em 0;
-    font-size: 0.9em;
-  }
-  th, td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
-  th { background: var(--code-bg); color: var(--hd); font-weight: 600; }
-  tr:hover { background: rgba(88,166,255,0.05); }
-  .tag {
-    display: inline-block; background: var(--code-bg); border: 1px solid var(--border);
-    border-radius: 12px; padding: 2px 10px; font-size: 0.8em; margin: 2px;
-  }
-  .warning {
-    border-left: 3px solid var(--warn); background: rgba(210,153,29,0.1);
-    padding: 12px 16px; margin: 1em 0; border-radius: 0 8px 8px 0;
-  }
-  .tip {
-    border-left: 3px solid var(--stat); background: rgba(126,231,135,0.1);
-    padding: 12px 16px; margin: 1em 0; border-radius: 0 8px 8px 0;
-  }
-  nav { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-  nav a { margin-right: 16px; font-size: 0.9em; }
-  .toc { columns: 2; column-gap: 20px; }
-  .toc a { display: block; padding: 2px 0; font-size: 0.9em; }
-  @media (max-width: 768px) { .toc { columns: 1; } .stat-grid { grid-template-columns: 1fr 1fr; } }
-</style>
-</head>
-<body>
-
-<nav>
-  <a href="#overview">Overview</a>
-  <a href="#stats">Statistics</a>
-  <a href="#hardware">Hardware</a>
+     1|<!DOCTYPE html>
+     2|<html lang="en">
+     3|<head>
+     4|<meta charset="UTF-8">
+     5|<meta name="viewport" content="width=device-width, initial-scale=1.0">
+     6|<title>TT-Metal: The Complete Reference — Architecture, Statistics & Deep Dive</title>
+     7|<style>
+     8|  :root {
+     9|    --bg: #0d1117;
+    10|    --fg: #c9d1d9;
+    11|    --hd: #58a6ff;
+    12|    --accent: #f78166;
+    13|    --code-bg: #161b22;
+    14|    --border: #30363d;
+    15|    --card-bg: #161b22;
+    16|    --stat: #7ee787;
+    17|    --warn: #d2991d;
+    18|    --link: #58a6ff;
+    19|    --muted: #8b949e;
+    20|  }
+    21|  * { box-sizing: border-box; margin: 0; padding: 0; }
+    22|  body {
+    23|    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    24|    background: var(--bg); color: var(--fg); line-height: 1.6;
+    25|    max-width: 1200px; margin: 0 auto; padding: 0 20px;
+    26|  }
+    27|  h1 { font-size: 2.4em; margin: 0.5em 0 0.2em; color: #fff; border-bottom: 2px solid var(--accent); padding-bottom: 0.3em; }
+    28|  h2 { font-size: 1.8em; margin: 1.5em 0 0.5em; color: var(--hd); border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+    29|  h3 { font-size: 1.4em; margin: 1.2em 0 0.4em; color: #d2a8ff; }
+    30|  h4 { font-size: 1.1em; margin: 0.8em 0 0.3em; color: var(--warn); }
+    31|  p, li { margin: 0.5em 0; }
+    32|  a { color: var(--link); text-decoration: none; }
+    33|  a:hover { text-decoration: underline; }
+    34|  code {
+    35|    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    36|    background: var(--code-bg); border-radius: 4px; padding: 1px 5px;
+    37|    font-size: 0.9em; color: var(--stat);
+    38|  }
+    39|  pre {
+    40|    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    41|    padding: 16px; overflow-x: auto; margin: 1em 0; font-size: 0.85em;
+    42|    line-height: 1.5;
+    43|  }
+    44|  pre code { background: none; padding: 0; color: var(--fg); }
+    45|  .stat-grid {
+    46|    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    47|    gap: 12px; margin: 1em 0;
+    48|  }
+    49|  .stat-card {
+    50|    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    51|    padding: 16px; text-align: center;
+    52|  }
+    53|  .stat-card .num { font-size: 2em; font-weight: 700; color: var(--stat); }
+    54|  .stat-card .label { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
+    55|  .bar-container { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+    56|  .bar-label { min-width: 120px; text-align: right; font-size: 0.9em; color: var(--muted); }
+    57|  .bar { height: 18px; border-radius: 4px; background: var(--accent); min-width: 4px; }
+    58|  .bar-val { font-size: 0.85em; color: var(--stat); min-width: 80px; }
+    59|  table {
+    60|    width: 100%; border-collapse: collapse; margin: 1em 0;
+    61|    font-size: 0.9em;
+    62|  }
+    63|  th, td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
+    64|  th { background: var(--code-bg); color: var(--hd); font-weight: 600; }
+    65|  tr:hover { background: rgba(88,166,255,0.05); }
+    66|  .tag {
+    67|    display: inline-block; background: var(--code-bg); border: 1px solid var(--border);
+    68|    border-radius: 12px; padding: 2px 10px; font-size: 0.8em; margin: 2px;
+    69|  }
+    70|  .warning {
+    71|    border-left: 3px solid var(--warn); background: rgba(210,153,29,0.1);
+    72|    padding: 12px 16px; margin: 1em 0; border-radius: 0 8px 8px 0;
+    73|  }
+    74|  .tip {
+    75|    border-left: 3px solid var(--stat); background: rgba(126,231,135,0.1);
+    76|    padding: 12px 16px; margin: 1em 0; border-radius: 0 8px 8px 0;
+    77|  }
+    78|  nav { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    79|  nav a { margin-right: 16px; font-size: 0.9em; }
+    80|  .toc { columns: 2; column-gap: 20px; }
+    81|  .toc a { display: block; padding: 2px 0; font-size: 0.9em; }
+    82|  @media (max-width: 768px) { .toc { columns: 1; } .stat-grid { grid-template-columns: 1fr 1fr; } }
+    83|</style>
+    84|</head>
+    85|<body>
+    86|
+    87|<nav>
+  <a href="#getting-started">Setup</a>
+  <a href="#stats">Stats</a>
+  <a href="#hardware">Hardware Arch</a>
+  <a href="#hardware-specs">Specs & Pricing</a>
   <a href="#metalium">Metalium</a>
+  <a href="#end-to-end">Programming</a>
   <a href="#ttnn">TT-NN</a>
-  <a href="#tt-train">TT-Train</a>
   <a href="#models">Models</a>
+  <a href="#running-models">Run Models</a>
   <a href="#build">Build</a>
   <a href="#tests">Tests</a>
+  <a href="#tools">Tools</a>
+  <a href="#community">Community</a>
   <a href="#bounties">Bounties</a>
+  <a href="#files">Files</a>
+  <a href="#reports">Reports</a>
+  <a href="#limitations">Limitations</a>
+  <a href="#vs-cuda">vs CUDA</a>
   <a href="#glossary">Glossary</a>
+  <a href="#error-handling">Debugging</a>
+  <a href="#attack-surface">Bounty Surface</a>
 </nav>
+   100|
+   101|<h1>TT-Metal: The Complete Reference</h1>
+   102|<p style="font-size:1.2em;color:var(--muted)">Architecture, Statistics & Deep-Dive Documentation of the Tenstorrent Metal Open-Source Repository</p>
+   103|<p style="color:var(--muted)">Generated: May 2026 &mdash; Based on deep static analysis of the entire codebase</p>
+   104|
+   105|<div class="warning">
+   106|  <strong>Purpose:</strong> This document is designed to teach <em>everything</em> about TT-Metal — starting from absolute basics (no prior knowledge of AI accelerators required) up to the deepest internals. Every concept is explained in plain English. Every statistic is exact (no approximations). If you read this cover to cover, you will understand the entire TT-Metal ecosystem.
+   107|</div>
+   108|
+   109|<!-- ──────────── OVERVIEW ──────────── -->
+   110|<h2 id="overview">1. What Is TT-Metal?</h2>
+   111|
+   112|<p>
+   113|<strong>TT-Metal</strong> (also called <strong>Metalium</strong>) is an open-source software development kit (SDK) created by <strong>Tenstorrent</strong>. It allows programmers to write software that runs on Tenstorrent's custom AI accelerator chips. The repository at <a href="https://github.com/tenstorrent/tt-metal">github.com/tenstorrent/tt-metal</a> is the single source of truth for all software related to Tenstorrent hardware.
+   114|</p>
+   115|
+   116|<p>The repo contains <strong>two major products</strong>:</p>
+   117|<ol>
+   118|  <li><strong>TT-Metalium</strong> — The low-level programming model. Think of it as the "assembly language plus" for Tenstorrent chips. You write kernels in C++ that run directly on the processor's tiny RISC-V CPUs.</li>
+   119|  <li><strong>TT-NN</strong> — The high-level neural network operator library. Think of it as the "PyTorch for Tenstorrent." You write Python code, and TT-NN compiles it into optimized Metalium kernels behind the scenes.</li>
+   120|</ol>
+   121|
+   122|<p>Additionally, the repository includes <strong>TT-Train</strong> (a training framework), <strong>50+ model implementations</strong>, thousands of tests, hardware emulation tools, profilers, and extensive documentation.</p>
+   123|
+   124|<h3>1.1. Key Facts</h3>
+   125|<table>
+   126|  <tr><td>Full Name</td><td>TT-Metal / Metalium</td></tr>
+   127|  <tr><td>GitHub</td><td><a href="https://github.com/tenstorrent/tt-metal">tenstorrent/tt-metal</a></td></tr>
+   128|  <tr><td>License</td><td>Apache 2.0</td></tr>
+   129|  <tr><td>Language</td><td>C++ (C++20), Python, C, CMake, YAML</td></tr>
+   130|  <tr><td>Build System</td><td>CMake 3.24+ with custom toolchain files</td></tr>
+   131|  <tr><td>Latest Release</td><td>v0.68.0 (ETA Apr 2026) / v0.67.4 (Mar 2026)</td></tr>
+   132|  <tr><td>Hardware Supported</td><td>Wormhole (WH), Blackhole (BH), Grayskull (GS) — legacy</td></tr>
+   133|  <tr><td>Bounty Program</td><td>Yes — paid bounties for open-source contributions</td></tr>
+   134|</table>
+   135|
+   136|<!-- ──────────── GETTING STARTED ──────────── -->
+<h2 id="getting-started">3. Getting Started: Installation & Setup</h2>
 
-<h1>TT-Metal: The Complete Reference</h1>
-<p style="font-size:1.2em;color:var(--muted)">Architecture, Statistics & Deep-Dive Documentation of the Tenstorrent Metal Open-Source Repository</p>
-<p style="color:var(--muted)">Generated: May 2026 &mdash; Based on deep static analysis of the entire codebase</p>
-
-<div class="warning">
-  <strong>Purpose:</strong> This document is designed to teach <em>everything</em> about TT-Metal — starting from absolute basics (no prior knowledge of AI accelerators required) up to the deepest internals. Every concept is explained in plain English. Every statistic is exact (no approximations). If you read this cover to cover, you will understand the entire TT-Metal ecosystem.
+<div class="tip">
+  <strong>Quick start:</strong> You have four ways to get TT-Metal running — pip wheel, Docker, source build, or Anaconda. All work on Linux (Ubuntu 22.04+ or RHEL-family). No Windows/macOS support.
 </div>
 
-<!-- ──────────── OVERVIEW ──────────── -->
-<h2 id="overview">1. What Is TT-Metal?</h2>
-
-<p>
-<strong>TT-Metal</strong> (also called <strong>Metalium</strong>) is an open-source software development kit (SDK) created by <strong>Tenstorrent</strong>. It allows programmers to write software that runs on Tenstorrent's custom AI accelerator chips. The repository at <a href="https://github.com/tenstorrent/tt-metal">github.com/tenstorrent/tt-metal</a> is the single source of truth for all software related to Tenstorrent hardware.
-</p>
-
-<p>The repo contains <strong>two major products</strong>:</p>
-<ol>
-  <li><strong>TT-Metalium</strong> — The low-level programming model. Think of it as the "assembly language plus" for Tenstorrent chips. You write kernels in C++ that run directly on the processor's tiny RISC-V CPUs.</li>
-  <li><strong>TT-NN</strong> — The high-level neural network operator library. Think of it as the "PyTorch for Tenstorrent." You write Python code, and TT-NN compiles it into optimized Metalium kernels behind the scenes.</li>
-</ol>
-
-<p>Additionally, the repository includes <strong>TT-Train</strong> (a training framework), <strong>50+ model implementations</strong>, thousands of tests, hardware emulation tools, profilers, and extensive documentation.</p>
-
-<h3>1.1. Key Facts</h3>
+<h3>3.1. System Requirements</h3>
 <table>
-  <tr><td>Full Name</td><td>TT-Metal / Metalium</td></tr>
-  <tr><td>GitHub</td><td><a href="https://github.com/tenstorrent/tt-metal">tenstorrent/tt-metal</a></td></tr>
-  <tr><td>License</td><td>Apache 2.0</td></tr>
-  <tr><td>Language</td><td>C++ (C++20), Python, C, CMake, YAML</td></tr>
-  <tr><td>Build System</td><td>CMake 3.24+ with custom toolchain files</td></tr>
-  <tr><td>Latest Release</td><td>v0.68.0 (ETA Apr 2026) / v0.67.4 (Mar 2026)</td></tr>
-  <tr><td>Hardware Supported</td><td>Wormhole (WH), Blackhole (BH), Grayskull (GS) — legacy</td></tr>
-  <tr><td>Bounty Program</td><td>Yes — paid bounties for open-source contributions</td></tr>
+  <tr><td>OS</td><td>Ubuntu 22.04 (Jammy) minimum; 24.04 (Noble) also supported. Debian/RHEL/Fedora families work.</td></tr>
+  <tr><td>glibc</td><td>≥ 2.34 (required for binary wheels and Anaconda)</td></tr>
+  <tr><td>RAM</td><td>32+ GB recommended (large models require 512+ GB for 70B+)</td></tr>
+  <tr><td>Disk</td><td>50+ GB free for full source build with tests</td></tr>
+  <tr><td>Python</td><td>3.10 (default), 3.11 or 3.12 also supported</td></tr>
+  <tr><td>C++ Standard</td><td>C++20 required; C99+ for C files</td></tr>
+</table>
+
+<h3>3.2. Hardware Prerequisites (Real Hardware)</h3>
+<p>If you own Tenstorrent hardware, you also need:</p>
+<ul>
+  <li><strong>TT-KMD</strong> (kernel-mode driver) v2.5.0+</li>
+  <li><strong>TT-Flash firmware</strong> fw_pack-19.2.0.fwbundle (v19.2.0)</li>
+  <li><strong>TT-SMI</strong> v3.0.38+ (system management interface)</li>
+  <li><strong>Hugepages</strong> — install_dependencies.sh --hugepages configures 1G hugepages</li>
+  <li><strong>IOMMU</strong> — must be enabled (intel_iommu=on or amd_iommu=on kernel parameter)</li>
+</ul>
+<p>Install all drivers with the TT-Installer script:</p>
+<pre><code>curl -fsSL https://github.com/tenstorrent/tt-installer/releases/download/v2.1.0/install.sh -O
+bash install.sh</code></pre>
+
+<h3>3.3. Option A: pip Wheel (Fastest)</h3>
+<pre><code>pip install ttnn
+# For model demos:
+export PYTHONPATH=$(pwd)
+pip install -r tt_metal/python_env/requirements-dev.txt
+# Set CPU governor to performance
+sudo apt-get install cpufrequtils
+sudo cpupower frequency-set -g performance</code></pre>
+
+<h3>3.4. Option B: Docker (Isolated)</h3>
+<pre><code>docker pull ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc
+docker run -it --rm --device /dev/tenstorrent \
+  ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc bash</code></pre>
+
+<h3>3.5. Option C: From Source (Full Control)</h3>
+<pre><code>git clone https://github.com/tenstorrent/tt-metal.git --recurse-submodules
+cd tt-metal
+sudo ./install_dependencies.sh        # System packages (as root)
+./create_venv.sh                       # Python virtual environment
+source python_env/bin/activate
+./build_metal.sh                       # CMake build (clang-20, Ninja)</code></pre>
+
+<h4>Build Flags</h4>
+<table>
+  <tr><th>Flag</th><th>Purpose</th></tr>
+  <tr><td><code>--release</code></td><td>Optimized production build (default)</td></tr>
+  <tr><td><code>--debug</code></td><td>Debug build with symbols</td></tr>
+  <tr><td><code>--build-tests</code></td><td>Build C++ tests (GoogleTest)</td></tr>
+  <tr><td><code>--clean</code></td><td>Clean rebuild</td></tr>
+  <tr><td><code>--enable-ccache</code></td><td>Compiler cache for faster rebuilds</td></tr>
+  <tr><td><code>--disable-profiler</code></td><td>Disable Tracy profiler integration</td></tr>
+  <tr><td><code>--without-distributed</code></td><td>Skip OpenMPI distributed support</td></tr>
+  <tr><td><code>--without-python-bindings</code></td><td>C++ only, no Python</td></tr>
+</table>
+
+<h3>3.6. Option D: Anaconda (Community)</h3>
+<pre><code>conda create -n metalium python=3.10 tt-metalium -c conda-forge</code></pre>
+
+<h3>3.7. Software-Only Emulation: tt-emule</h3>
+<div class="warning">
+  <strong>No hardware? No problem.</strong> <code>tt-emule</code> lets you run tt-metal kernel and host code on a standard x86-64 Linux machine — <strong>zero Tenstorrent hardware, drivers, or firmware required</strong>. It emulates SRAM, DRAM, circular buffers, and NoC operations in software.
+</div>
+
+<p>What it emulates:</p>
+<ul>
+  <li>Core L1 SRAM (1-4 MB) and DRAM banks with proper NoC address routing</li>
+  <li>Circular buffers with synchronization (mutex+condvar)</li>
+  <li>Data-movement and compute threads as OS threads</li>
+  <li>NoC async read/write, remote semaphores, runtime args</li>
+</ul>
+<p>What it does NOT emulate:</p>
+<ul>
+  <li>Real RISC-V ISA or cycle-accurate timing</li>
+  <li>Actual async NoC (all DMA is synchronous in emulation)</li>
+  <li>Ethernet/dispatch fabric or UMD layers</li>
+  <li>Real tile layout conversions (tilize/untilize are identity copies)</li>
+</ul>
+
+<p><strong>Setup:</strong> Clone tt-emule as sibling to tt-metal:</p>
+<pre><code>git clone https://github.com/tenstorrent/tt-emule.git ../tt-emule
+
+cd tt-metal
+cmake -S . -B build_emule -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-linux-clang-20-libstdcpp-toolchain.cmake \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DTT_METAL_USE_EMULE=ON -DTT_EMULE_PATH=../tt-emule \
+  -DWITH_PYTHON_BINDINGS=ON -DTT_METAL_BUILD_TESTS=ON -DTTNN_BUILD_TESTS=ON \
+  -DENABLE_TRACY=OFF -DENABLE_DISTRIBUTED=ON
+cmake --build build_emule -j$(nproc)</code></pre>
+
+<p><strong>Run with emulation:</strong></p>
+<pre><code>export TT_METAL_EMULE_MODE=1
+export TT_METAL_SLOW_DISPATCH_MODE=1
+export TT_METAL_MOCK_CLUSTER_DESC_PATH=/path/to/wormhole_N150.yaml</code></pre>
+
+<h3>3.8. Verify Installation</h3>
+<pre><code>export PYTHONPATH=/path/to/tt-metal
+python3 -m ttnn.examples.usage.run_op_on_device</code></pre>
+
+<h3>3.9. Key Environment Variables</h3>
+<table>
+  <tr><th>Variable</th><th>Purpose</th></tr>
+  <tr><td><code>TT_METAL_HOME</code></td><td>Root of tt-metal repo (needed for tests/scripts)</td></tr>
+  <tr><td><code>PYTHONPATH</code></td><td>Must include tt-metal root for Python imports</td></tr>
+  <tr><td><code>TT_METAL_SLOW_DISPATCH_MODE=1</code></td><td>Debug mode — host CPU manages every operation synchronously</td></tr>
+  <tr><td><code>TT_METAL_DPRINT_CORES</code></td><td>Enable device debug printing from kernels</td></tr>
+  <tr><td><code>TT_METAL_EMULE_MODE=1</code></td><td>Enable software emulation mode</td></tr>
 </table>
 
 <!-- ──────────── STATISTICS ──────────── -->
-<h2 id="stats">2. Repository Statistics (Exact Numbers)</h2>
+   137|<h2 id="stats">2. Repository Statistics (Exact Numbers)</h2>
+   138|
+   139|<div class="stat-grid">
+   140|  <div class="stat-card"><div class="num">16,761</div><div class="label">Total Files</div></div>
+   141|  <div class="stat-card"><div class="num">3,225,363</div><div class="label">Total Text Lines</div></div>
+   142|  <div class="stat-card"><div class="num">5,132</div><div class="label">Python Files</div></div>
+   143|  <div class="stat-card"><div class="num">4,257</div><div class="label">C++ Source Files</div></div>
+   144|  <div class="stat-card"><div class="num">2,256</div><div class="label">C++ Header Files</div></div>
+   145|  <div class="stat-card"><div class="num">1,203</div><div class="label">C Header Files</div></div>
+   146|  <div class="stat-card"><div class="num">1,251</div><div class="label">YAML Files</div></div>
+   147|  <div class="stat-card"><div class="num">887</div><div class="label">Test YAML Configs</div></div>
+   148|</div>
+   149|
+   150|<h3>2.1. Lines of Code by Language</h3>
+   151|<div class="bar-container"><span class="bar-label">Python</span><span class="bar" style="width:440px"></span><span class="bar-val">1,359,991</span></div>
+   152|<div class="bar-container"><span class="bar-label">C++ Source</span><span class="bar" style="width:313px"></span><span class="bar-val">968,811</span></div>
+   153|<div class="bar-container"><span class="bar-label">C/C++ Headers</span><span class="bar" style="width:147px"></span><span class="bar-val">455,402</span></div>
+   154|<div class="bar-container"><span class="bar-label">YAML</span><span class="bar" style="width:57px"></span><span class="bar-val">177,757</span></div>
+   155|<div class="bar-container"><span class="bar-label">CMake</span><span class="bar" style="width:5px"></span><span class="bar-val">16,431</span></div>
+   156|<div class="bar-container"><span class="bar-label">Markdown/Docs</span><span class="bar" style="width:80px"></span><span class="bar-val">~247,000</span></div>
+   157|
+   158|<h3>2.2. Lines of Code by Module</h3>
+   159|<table>
+   160|  <tr><th>Module</th><th>Total Lines</th><th>C++</th><th>Headers</th><th>Python</th><th>Files</th><th>Description</th></tr>
+   161|  <tr><td><code>ttnn/</code></td><td>541,372</td><td>430,431</td><td>86,627</td><td>~24,000</td><td>3,870</td><td>TT-NN Operator Library</td></tr>
+   162|  <tr><td><code>tt_metal/</code></td><td>529,713</td><td>173,715</td><td>303,793</td><td>~52,000</td><td>2,661</td><td>Low-Level Metalium SDK</td></tr>
+   163|  <tr><td><code>models/</code></td><td>796,388</td><td>—</td><td>—</td><td>—</td><td>3,610</td><td>50+ Model Implementations</td></tr>
+   164|  <tr><td><code>tests/</code></td><td>743,094</td><td>270,721</td><td>—</td><td>466,655</td><td>4,144</td><td>Test Suite</td></tr>
+   165|  <tr><td><code>tt-train/</code></td><td>111,516</td><td>—</td><td>—</td><td>—</td><td>896</td><td>Training Framework</td></tr>
+   166|</table>
+   167|
+   168|<h3>2.3. tt_metal Depth Breakdown</h3>
+   169|<table>
+   170|  <tr><th>Subdirectory</th><th>Files</th><th>Description</th></tr>
+   171|  <tr><td><code>tt_metal/hw/</code></td><td>823</td><td>Hardware-specific kernels, firmware, RISC-V toolchain</td></tr>
+   172|  <tr><td><code>tt_metal/tt-llk/</code></td><td>747</td><td>Low-Level Kernel library (69,353 lines of C++)</td></tr>
+   173|  <tr><td><code>tt_metal/api/tt-metalium/</code></td><td>151</td><td>Public C++ API headers</td></tr>
+   174|  <tr><td><code>tt_metal/impl/</code></td><td>25 dirs</td><td>Core implementation: dispatch, device, buffers, tensors, allocator, etc.</td></tr>
+   175|  <tr><td><code>tt_metal/kernels/</code></td><td>8 source</td><td>Compute & dataflow kernel examples</td></tr>
+   176|  <tr><td><code>tt_metal/distributed/</code></td><td>—</td><td>Multi-chip distributed execution</td></tr>
+   177|  <tr><td><code>tt_metal/fabric/</code></td><td>—</td><td>Inter-chip fabric communication (tt-Fabric)</td></tr>
+   178|  <tr><td><code>tt_metal/programming_examples/</code></td><td>18 examples</td><td>Tutorial programs: matmul, eltwise, sharding, hello world, etc.</td></tr>
+   179|</table>
+   180|
+   181|<h3>2.4. ttnn Operation Categories (33 total)</h3>
+   182|<p>The TT-NN C++ operations directory contains these categories:</p>
+   183|<div style="display:flex;flex-wrap:wrap;gap:6px;margin:1em 0">
+   184|  <span class="tag">eltwise</span><span class="tag">matmul</span><span class="tag">conv</span><span class="tag">normalization</span>
+   185|  <span class="tag">reduction</span><span class="tag">data_movement</span><span class="tag">creation</span><span class="tag">core</span>
+   186|  <span class="tag">copy</span><span class="tag">transformer</span><span class="tag">embedding</span><span class="tag">pool</span>
+   187|  <span class="tag">ccl</span><span class="tag">kv_cache</span><span class="tag">loss</span><span class="tag">debug</span>
+   188|  <span class="tag">bernoulli</span><span class="tag">uniform</span><span class="tag">rand</span><span class="tag">randn</span>
+   189|  <span class="tag">full</span><span class="tag">full_like</span><span class="tag">index_fill</span><span class="tag">prefetcher</span>
+   190|  <span class="tag">sliding_window</span><span class="tag">point_to_point</span><span class="tag">generic</span><span class="tag">moreh</span>
+   191|  <span class="tag">experimental</span><span class="tag">examples</span><span class="tag">kernel_helper_functions</span>
+   192|  <span class="tag">embedding_backward</span>
+   193|</div>
+   194|
+   195|<!-- ──────────── HARDWARE ──────────── -->
+   196|<h2 id="hardware">3. Tenstorrent Hardware Architecture</h2>
+   197|
+   198|<div class="tip">
+   199|  <strong>Beginner's Note:</strong> If you've never programmed an AI accelerator before, think of it like this: Tenstorrent chips are grids of tiny independent processors (called "Tensix cores"), connected by a fast network (NoC). Each core has its own memory (SRAM) and compute units. There is NO cache hierarchy. You explicitly move data around — there is no automatic caching. This means you have full control, but also full responsibility.
+   200|</div>
+   201|
+   202|<h3>3.1. The Chip — A Grid of Specialized Nodes</h3>
+   203|<p>A Tenstorrent chip (called a <strong>Tensix Processor</strong>) is a 2D grid of different node types:</p>
+   204|<table>
+   205|  <tr><th>Node</th><th>Symbol</th><th>Function</th></tr>
+   206|  <tr><td>Tensix Core</td><td><code>T</code></td><td>Compute — the main workhorse. Performs matrix/vector operations.</td></tr>
+   207|  <tr><td>DRAM Controller</td><td><code>D</code></td><td>Memory — connects to off-chip DRAM (the "big" memory).</td></tr>
+   208|  <tr><td>Ethernet</td><td><code>E</code></td><td>Networking — connects to other Tenstorrent chips via standard Ethernet.</td></tr>
+   209|  <tr><td>ARC / Management</td><td><code>A</code></td><td>Control — ARM RISC-V management processor for chip initialization.</td></tr>
+   210|  <tr><td>PCIe</td><td><code>P</code></td><td>Host Interface — connects the chip to the host server via PCI Express.</td></tr>
+   211|</table>
+   212|
+   213|<p>Example Wormhole chip layout: rows and columns of [T, T, T, T, D, T, E, ...] forming a NoC grid. The exact layout varies by chip generation.</p>
+   214|
+   215|<h3>3.2. The Tensix Core — Deep Dive</h3>
+   216|<p>This is the central computational unit. <strong>One Tensix core</strong> contains:</p>
+   217|<table>
+   218|  <tr><th>Component</th><th>Count</th><th>Purpose</th></tr>
+   219|  <tr><td>Baby RISC-V CPUs</td><td>5</td><td>Control processors — they dispatch instructions, not execute math directly</td></tr>
+   220|  <tr><td>Matrix Engine (FPU)</td><td>1</td><td>Fixed-point / floating-point unit for matrix multiplication and binary operations</td></tr>
+   221|  <tr><td>Vector Engine (SFPU)</td><td>1</td><td>Single instruction FPU for element-wise operations (sin, cos, exp, tanh, etc.)</td></tr>
+   222|  <tr><td>Packer / Unpacker</td><td>1 each</td><td>Convert between linear memory layout and tiled (32×32) format</td></tr>
+   223|  <tr><td>NoC Interfaces</td><td>2</td><td>Network-on-Chip routers for data movement (NoC0 and NoC1, opposite directions)</td></tr>
+   224|  <tr><td>SRAM (L1)</td><td>1.5 MB</td><td>Local high-speed memory — stores tiles, intermediate results, circular buffers</td></tr>
+   225|  <tr><td>Dedicated Registers</td><td>Multiple</td><td>SrcA, SrcB (input), Dst (output), LReg (vector state)</td></tr>
+   226|</table>
+   227|
+   228|<h3>3.3. The Five Baby RISC-V Cores — Who Does What</h3>
+   229|<table>
+   230|  <tr><th>Core</th><th>Role</th><th>Runs</th></tr>
+   231|  <tr><td>Data Movement 0 (DM0 / RISCV_0)</td><td>Reader</td><td>Typically moves data from DRAM into SRAM via NoC0</td></tr>
+   232|  <tr><td>Data Movement 1 (DM1 / RISCV_1)</td><td>Writer</td><td>Typically moves results from SRAM to DRAM via NoC1</td></tr>
+   233|  <tr><td>Unpack</td><td>Compute Prep</td><td>Moves tiles from SRAM into SrcA/SrcB registers for the FPU</td></tr>
+   234|  <tr><td>Math</td><td>Compute Dispatch</td><td>Issues instructions to FPU and SFPU (the actual math engines)</td></tr>
+   235|  <tr><td>Pack</td><td>Compute Output</td><td>Moves results from Dst registers back into SRAM circular buffers</td></tr>
+   236|</table>
+   237|
+   238|<div class="warning">
+   239|  <strong>Critical insight:</strong> The 5 RISC-V cores do NOT do the math themselves. They are <em>dispatch processors</em>. The Unpack core puts data into registers. The Math core tells the FPU/SFPU "multiply these." The Pack core takes the result out. The actual math happens in the <em>hardware engines</em> (FPU and SFPU), which are peripherals controlled by the RISC-V cores.
+   240|</div>
+   241|
+   242|<h3>3.4. Data Flow — The Production Line</h3>
+   243|<pre><code>DRAM ──NoC0──> [Reader: DM0] ──> CB_in ──> [Unpack] ──> SrcA/SrcB ──> [FPU/SFPU] ──> Dst ──> [Pack] ──> CB_out ──> [Writer: DM1] ──NoC1──> DRAM</code></pre>
+   244|
+   245|<p>This is a <strong>software pipeline</strong>: while the reader fetches tile N+1, the compute processes tile N, and the writer outputs tile N-1 — all simultaneously, coordinated by <strong>circular buffers</strong> (CBs) in SRAM.</p>
+   246|
+   247|<h3>3.5. Native 32×32 Tile Computing</h3>
+   248|<p>Unlike GPUs that operate on linear arrays of elements, Tenstorrent hardware natively processes <strong>32×32 element tiles</strong>. This means:</p>
+   249|<ul>
+   250|  <li><strong>Tensors are always stored in tiled format</strong> on the device. A 48×1024 matrix becomes 64×1024 after padding to the nearest 32-multiple.</li>
+   251|  <li><strong>Tilization</strong> (converting linear to tiled) and <strong>untilization</strong> (reverse) are done on-device by the packer/unpacker hardware at zero host CPU cost.</li>
+   252|  <li>The 32×32 size is optimal for deep learning: it fits key matrix multiply dimensions exactly, keeping SRAM usage low while maximizing compute throughput.</li>
+   253|</ul>
+   254|
+   255|<h3>3.6. Memory Model — No Cache Hierarchy</h3>
+   256|<p>This is the <strong>most important architectural difference</strong> from CPUs and GPUs:</p>
+   257|<ul>
+   258|  <li><strong>There is NO L1/L2/L3 cache.</strong> SRAM is not a cache — it's addressable scratchpad memory.</li>
+   259|  <li>Any Tensix core can read/write the SRAM of <em>any other</em> Tensix core across the chip via NoC.</li>
+   260|  <li>This eliminates cache coherency protocols and provides <strong>deterministic, predictable latency</strong>.</li>
+   261|  <li>But it means developers must explicitly manage all data movement — there's no "just access the pointer" for off-core data.</li>
+   262|</ul>
+   263|
+   264|<h3>3.7. Hardware Generations</h3>
+   265|<table>
+   266|  <tr><th>Generation</th><th>Status</th><th>Key Specs</th><th>Products</th></tr>
+   267|  <tr><td>Grayskull (GS)</td><td>Legacy</td><td>64-element vector, 19-bit FP</td><td>e75, e150, e300</td></tr>
+   268|  <tr><td>Wormhole (WH)</td><td>Current</td><td>32-element vector, 32-bit FP, 800G Ethernet</td><td>n150 (1 chip), n300 (2 chips)</td></tr>
+   269|  <tr><td>Blackhole (BH)</td><td>Current (active dev)</td><td>32-element vector, 32-bit FP, enhanced perf</td><td>p100, p150</td></tr>
+   270|</table>
+   271|
+   272|<h3>3.8. Multi-Chip Scaling — Ethernet, Not NVLink</h3>
+   273|<p>Instead of proprietary interconnects like NVIDIA's NVLink, Tenstorrent uses <strong>standard Ethernet</strong> (up to 800 Gbps) to connect chips. The scaling hierarchy:</p>
+   274|<table>
+   275|  <tr><th>Configuration</th><th>Chips</th><th>Name</th><th>Example Model</th></tr>
+   276|  <tr><td>1 chip</td><td>1</td><td>n150 / p150</td><td>Llama 3.2 3B</td></tr>
+   277|  <tr><td>2 chips (Ethernet-linked)</td><td>2</td><td>n300</td><td>Qwen 2.5 7B (TP=2)</td></tr>
+   278|  <tr><td>8 chips (mesh)</td><td>8</td><td>QuietBox</td><td>Llama 3.1 70B (TP=8), DeepSeek R1</td></tr>
+   279|  <tr><td>32 chips</td><td>32</td><td>Galaxy</td><td>Llama 3.3 70B (TP=32) — 2,269 T/S</td></tr>
+   280|  <tr><td>Multi-host mesh</td><td>32+ × N</td><td>tt-Fabric</td><td>Data-center scale training</td></tr>
+   281|</table>
+   282|
+   283|<!-- ──────────── HARDWARE SPECS ──────────── -->
+<h2 id="hardware-specs">4. Hardware Specifications & Pricing</h2>
 
-<div class="stat-grid">
-  <div class="stat-card"><div class="num">16,761</div><div class="label">Total Files</div></div>
-  <div class="stat-card"><div class="num">3,225,363</div><div class="label">Total Text Lines</div></div>
-  <div class="stat-card"><div class="num">5,132</div><div class="label">Python Files</div></div>
-  <div class="stat-card"><div class="num">4,257</div><div class="label">C++ Source Files</div></div>
-  <div class="stat-card"><div class="num">2,256</div><div class="label">C++ Header Files</div></div>
-  <div class="stat-card"><div class="num">1,203</div><div class="label">C Header Files</div></div>
-  <div class="stat-card"><div class="num">1,251</div><div class="label">YAML Files</div></div>
-  <div class="stat-card"><div class="num">887</div><div class="label">Test YAML Configs</div></div>
-</div>
-
-<h3>2.1. Lines of Code by Language</h3>
-<div class="bar-container"><span class="bar-label">Python</span><span class="bar" style="width:440px"></span><span class="bar-val">1,359,991</span></div>
-<div class="bar-container"><span class="bar-label">C++ Source</span><span class="bar" style="width:313px"></span><span class="bar-val">968,811</span></div>
-<div class="bar-container"><span class="bar-label">C/C++ Headers</span><span class="bar" style="width:147px"></span><span class="bar-val">455,402</span></div>
-<div class="bar-container"><span class="bar-label">YAML</span><span class="bar" style="width:57px"></span><span class="bar-val">177,757</span></div>
-<div class="bar-container"><span class="bar-label">CMake</span><span class="bar" style="width:5px"></span><span class="bar-val">16,431</span></div>
-<div class="bar-container"><span class="bar-label">Markdown/Docs</span><span class="bar" style="width:80px"></span><span class="bar-val">~247,000</span></div>
-
-<h3>2.2. Lines of Code by Module</h3>
+<h3>4.1. Wormhole (Current Mainstream)</h3>
 <table>
-  <tr><th>Module</th><th>Total Lines</th><th>C++</th><th>Headers</th><th>Python</th><th>Files</th><th>Description</th></tr>
-  <tr><td><code>ttnn/</code></td><td>541,372</td><td>430,431</td><td>86,627</td><td>~24,000</td><td>3,870</td><td>TT-NN Operator Library</td></tr>
-  <tr><td><code>tt_metal/</code></td><td>529,713</td><td>173,715</td><td>303,793</td><td>~52,000</td><td>2,661</td><td>Low-Level Metalium SDK</td></tr>
-  <tr><td><code>models/</code></td><td>796,388</td><td>—</td><td>—</td><td>—</td><td>3,610</td><td>50+ Model Implementations</td></tr>
-  <tr><td><code>tests/</code></td><td>743,094</td><td>270,721</td><td>—</td><td>466,655</td><td>4,144</td><td>Test Suite</td></tr>
-  <tr><td><code>tt-train/</code></td><td>111,516</td><td>—</td><td>—</td><td>—</td><td>896</td><td>Training Framework</td></tr>
+  <tr><th>Spec</th><th>n150d</th><th>n150s</th><th>n300d</th><th>n300s</th></tr>
+  <tr><td>ASICs</td><td>1</td><td>1</td><td>2</td><td>2</td></tr>
+  <tr><td>Tensix Cores</td><td>72</td><td>72</td><td>128 (64/ASIC)</td><td>128 (64/ASIC)</td></tr>
+  <tr><td>SRAM</td><td>108 MB</td><td>108 MB</td><td>192 MB</td><td>192 MB</td></tr>
+  <tr><td>Memory</td><td>12 GB GDDR6</td><td>12 GB</td><td>24 GB</td><td>24 GB</td></tr>
+  <tr><td>Memory BW</td><td>288 GB/s</td><td>288 GB/s</td><td>576 GB/s</td><td>576 GB/s</td></tr>
+  <tr><td>FP8 TFLOPS</td><td>262</td><td>262</td><td>466</td><td>466</td></tr>
+  <tr><td>FP16 TFLOPS</td><td>74</td><td>74</td><td>131</td><td>131</td></tr>
+  <tr><td>TBP (Power)</td><td>160W</td><td>160W</td><td>300W</td><td>300W</td></tr>
+  <tr><td>Interface</td><td colspan="4">PCIe 4.0 x16</td></tr>
+  <tr><td>Cooling</td><td>Active (Fan)</td><td>Passive</td><td>Active (Fan)</td><td>Passive</td></tr>
+  <tr><td><strong>Price</strong></td><td><strong>$1,099</strong></td><td><strong>$999</strong></td><td><strong>$1,449</strong></td><td><strong>$1,399</strong></td></tr>
 </table>
 
-<h3>2.3. tt_metal Depth Breakdown</h3>
+<h3>4.2. Blackhole (Latest Generation)</h3>
 <table>
-  <tr><th>Subdirectory</th><th>Files</th><th>Description</th></tr>
-  <tr><td><code>tt_metal/hw/</code></td><td>823</td><td>Hardware-specific kernels, firmware, RISC-V toolchain</td></tr>
-  <tr><td><code>tt_metal/tt-llk/</code></td><td>747</td><td>Low-Level Kernel library (69,353 lines of C++)</td></tr>
-  <tr><td><code>tt_metal/api/tt-metalium/</code></td><td>151</td><td>Public C++ API headers</td></tr>
-  <tr><td><code>tt_metal/impl/</code></td><td>25 dirs</td><td>Core implementation: dispatch, device, buffers, tensors, allocator, etc.</td></tr>
-  <tr><td><code>tt_metal/kernels/</code></td><td>8 source</td><td>Compute & dataflow kernel examples</td></tr>
-  <tr><td><code>tt_metal/distributed/</code></td><td>—</td><td>Multi-chip distributed execution</td></tr>
-  <tr><td><code>tt_metal/fabric/</code></td><td>—</td><td>Inter-chip fabric communication (tt-Fabric)</td></tr>
-  <tr><td><code>tt_metal/programming_examples/</code></td><td>18 examples</td><td>Tutorial programs: matmul, eltwise, sharding, hello world, etc.</td></tr>
+  <tr><th>Spec</th><th>p100a</th><th>p150a</th><th>p150b</th></tr>
+  <tr><td>Tensix Cores</td><td>120</td><td>120</td><td>120</td></tr>
+  <tr><td>AI Clock</td><td colspan="3">Up to 1.35 GHz</td></tr>
+  <tr><td>SRAM</td><td colspan="3">180 MB (1.5 MB per core)</td></tr>
+  <tr><td>Memory</td><td>28 GB GDDR6</td><td>32 GB GDDR6</td><td>32 GB GDDR6</td></tr>
+  <tr><td>Memory BW</td><td>448 GB/s</td><td>512 GB/s</td><td>512 GB/s</td></tr>
+  <tr><td>SiFive x280 Cores</td><td colspan="3">16 (Big RISC-V management cores)</td></tr>
+  <tr><td>BLOCKFP8 TFLOPS</td><td colspan="3">664</td></tr>
+  <tr><td>TBP (Power)</td><td colspan="3">300W</td></tr>
+  <tr><td>Interface</td><td colspan="3">PCIe 5.0 x16</td></tr>
+  <tr><td>QSFP-DD 800G</td><td>None (standalone)</td><td>4 ports</td><td>4 ports</td></tr>
+  <tr><td>Cooling</td><td>Active</td><td>Active</td><td>Passive</td></tr>
+  <tr><td><strong>Price</strong></td><td><strong>$999</strong></td><td><strong>$1,399</strong></td><td><strong>$1,399</strong></td></tr>
 </table>
 
-<h3>2.4. ttnn Operation Categories (33 total)</h3>
-<p>The TT-NN C++ operations directory contains these categories:</p>
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:1em 0">
-  <span class="tag">eltwise</span><span class="tag">matmul</span><span class="tag">conv</span><span class="tag">normalization</span>
-  <span class="tag">reduction</span><span class="tag">data_movement</span><span class="tag">creation</span><span class="tag">core</span>
-  <span class="tag">copy</span><span class="tag">transformer</span><span class="tag">embedding</span><span class="tag">pool</span>
-  <span class="tag">ccl</span><span class="tag">kv_cache</span><span class="tag">loss</span><span class="tag">debug</span>
-  <span class="tag">bernoulli</span><span class="tag">uniform</span><span class="tag">rand</span><span class="tag">randn</span>
-  <span class="tag">full</span><span class="tag">full_like</span><span class="tag">index_fill</span><span class="tag">prefetcher</span>
-  <span class="tag">sliding_window</span><span class="tag">point_to_point</span><span class="tag">generic</span><span class="tag">moreh</span>
-  <span class="tag">experimental</span><span class="tag">examples</span><span class="tag">kernel_helper_functions</span>
-  <span class="tag">embedding_backward</span>
-</div>
-
-<!-- ──────────── HARDWARE ──────────── -->
-<h2 id="hardware">3. Tenstorrent Hardware Architecture</h2>
-
-<div class="tip">
-  <strong>Beginner's Note:</strong> If you've never programmed an AI accelerator before, think of it like this: Tenstorrent chips are grids of tiny independent processors (called "Tensix cores"), connected by a fast network (NoC). Each core has its own memory (SRAM) and compute units. There is NO cache hierarchy. You explicitly move data around — there is no automatic caching. This means you have full control, but also full responsibility.
-</div>
-
-<h3>3.1. The Chip — A Grid of Specialized Nodes</h3>
-<p>A Tenstorrent chip (called a <strong>Tensix Processor</strong>) is a 2D grid of different node types:</p>
+<h3>4.3. Where to Buy</h3>
+<p>All cards sold directly at <a href="https://tenstorrent.com/hardware/cards">tenstorrent.com/hardware/cards</a>. In stock and ready to ship. Accessories:</p>
 <table>
-  <tr><th>Node</th><th>Symbol</th><th>Function</th></tr>
-  <tr><td>Tensix Core</td><td><code>T</code></td><td>Compute — the main workhorse. Performs matrix/vector operations.</td></tr>
-  <tr><td>DRAM Controller</td><td><code>D</code></td><td>Memory — connects to off-chip DRAM (the "big" memory).</td></tr>
-  <tr><td>Ethernet</td><td><code>E</code></td><td>Networking — connects to other Tenstorrent chips via standard Ethernet.</td></tr>
-  <tr><td>ARC / Management</td><td><code>A</code></td><td>Control — ARM RISC-V management processor for chip initialization.</td></tr>
-  <tr><td>PCIe</td><td><code>P</code></td><td>Host Interface — connects the chip to the host server via PCI Express.</td></tr>
+  <tr><th>Item</th><th>Price</th></tr>
+  <tr><td>QSFP-DD 800G DAC Cable (0.5m)</td><td>$200</td></tr>
+  <tr><td>QSFP-DD 400G DAC Cable (0.6m)</td><td>$68</td></tr>
+  <tr><td>Warp 100 Bridge Dual Slot</td><td>$56</td></tr>
 </table>
 
-<p>Example Wormhole chip layout: rows and columns of [T, T, T, T, D, T, E, ...] forming a NoC grid. The exact layout varies by chip generation.</p>
+<h3>4.4. Cloud Access</h3>
+<p><strong>Tenstorrent Cloud</strong> via <a href="https://console.tenstorrent.com">TT-Console</a> — first-party cloud with browser-based access to TT hardware instances. Instance specs: 1-128 Wormhole processors, up to 2 TB memory, up to 96 vCPU. No third-party cloud providers (AWS/GCP/Azure) offer TT instances yet.</p>
 
-<h3>3.2. The Tensix Core — Deep Dive</h3>
-<p>This is the central computational unit. <strong>One Tensix core</strong> contains:</p>
+<h3>4.5. Peak Compute Performance</h3>
 <table>
-  <tr><th>Component</th><th>Count</th><th>Purpose</th></tr>
-  <tr><td>Baby RISC-V CPUs</td><td>5</td><td>Control processors — they dispatch instructions, not execute math directly</td></tr>
-  <tr><td>Matrix Engine (FPU)</td><td>1</td><td>Fixed-point / floating-point unit for matrix multiplication and binary operations</td></tr>
-  <tr><td>Vector Engine (SFPU)</td><td>1</td><td>Single instruction FPU for element-wise operations (sin, cos, exp, tanh, etc.)</td></tr>
-  <tr><td>Packer / Unpacker</td><td>1 each</td><td>Convert between linear memory layout and tiled (32×32) format</td></tr>
-  <tr><td>NoC Interfaces</td><td>2</td><td>Network-on-Chip routers for data movement (NoC0 and NoC1, opposite directions)</td></tr>
-  <tr><td>SRAM (L1)</td><td>1.5 MB</td><td>Local high-speed memory — stores tiles, intermediate results, circular buffers</td></tr>
-  <tr><td>Dedicated Registers</td><td>Multiple</td><td>SrcA, SrcB (input), Dst (output), LReg (vector state)</td></tr>
+  <tr><th>Metric</th><th>Wormhole n150</th><th>Blackhole p150</th></tr>
+  <tr><td>BFLOAT4_B (LoFi)</td><td>~190 TFLOPS</td><td>~580 TFLOPS</td></tr>
+  <tr><td>BFLOAT8_B (HiFi2)</td><td>~95 TFLOPS</td><td>~270 TFLOPS</td></tr>
+  <tr><td>BFLOAT16 (HiFi4)</td><td>~68 TFLOPS</td><td>~142 TFLOPS</td></tr>
+  <tr><td>Utilization (best)</td><td>93%</td><td>96%</td></tr>
+  <tr><td>Configs &gt;80% util</td><td>32%</td><td>61%</td></tr>
 </table>
 
-<h3>3.3. The Five Baby RISC-V Cores — Who Does What</h3>
+<h3>4.6. Context Length Limits (by Model & Device)</h3>
 <table>
-  <tr><th>Core</th><th>Role</th><th>Runs</th></tr>
-  <tr><td>Data Movement 0 (DM0 / RISCV_0)</td><td>Reader</td><td>Typically moves data from DRAM into SRAM via NoC0</td></tr>
-  <tr><td>Data Movement 1 (DM1 / RISCV_1)</td><td>Writer</td><td>Typically moves results from SRAM to DRAM via NoC1</td></tr>
-  <tr><td>Unpack</td><td>Compute Prep</td><td>Moves tiles from SRAM into SrcA/SrcB registers for the FPU</td></tr>
-  <tr><td>Math</td><td>Compute Dispatch</td><td>Issues instructions to FPU and SFPU (the actual math engines)</td></tr>
-  <tr><td>Pack</td><td>Compute Output</td><td>Moves results from Dst registers back into SRAM circular buffers</td></tr>
-</table>
-
-<div class="warning">
-  <strong>Critical insight:</strong> The 5 RISC-V cores do NOT do the math themselves. They are <em>dispatch processors</em>. The Unpack core puts data into registers. The Math core tells the FPU/SFPU "multiply these." The Pack core takes the result out. The actual math happens in the <em>hardware engines</em> (FPU and SFPU), which are peripherals controlled by the RISC-V cores.
-</div>
-
-<h3>3.4. Data Flow — The Production Line</h3>
-<pre><code>DRAM ──NoC0──> [Reader: DM0] ──> CB_in ──> [Unpack] ──> SrcA/SrcB ──> [FPU/SFPU] ──> Dst ──> [Pack] ──> CB_out ──> [Writer: DM1] ──NoC1──> DRAM</code></pre>
-
-<p>This is a <strong>software pipeline</strong>: while the reader fetches tile N+1, the compute processes tile N, and the writer outputs tile N-1 — all simultaneously, coordinated by <strong>circular buffers</strong> (CBs) in SRAM.</p>
-
-<h3>3.5. Native 32×32 Tile Computing</h3>
-<p>Unlike GPUs that operate on linear arrays of elements, Tenstorrent hardware natively processes <strong>32×32 element tiles</strong>. This means:</p>
-<ul>
-  <li><strong>Tensors are always stored in tiled format</strong> on the device. A 48×1024 matrix becomes 64×1024 after padding to the nearest 32-multiple.</li>
-  <li><strong>Tilization</strong> (converting linear to tiled) and <strong>untilization</strong> (reverse) are done on-device by the packer/unpacker hardware at zero host CPU cost.</li>
-  <li>The 32×32 size is optimal for deep learning: it fits key matrix multiply dimensions exactly, keeping SRAM usage low while maximizing compute throughput.</li>
-</ul>
-
-<h3>3.6. Memory Model — No Cache Hierarchy</h3>
-<p>This is the <strong>most important architectural difference</strong> from CPUs and GPUs:</p>
-<ul>
-  <li><strong>There is NO L1/L2/L3 cache.</strong> SRAM is not a cache — it's addressable scratchpad memory.</li>
-  <li>Any Tensix core can read/write the SRAM of <em>any other</em> Tensix core across the chip via NoC.</li>
-  <li>This eliminates cache coherency protocols and provides <strong>deterministic, predictable latency</strong>.</li>
-  <li>But it means developers must explicitly manage all data movement — there's no "just access the pointer" for off-core data.</li>
-</ul>
-
-<h3>3.7. Hardware Generations</h3>
-<table>
-  <tr><th>Generation</th><th>Status</th><th>Key Specs</th><th>Products</th></tr>
-  <tr><td>Grayskull (GS)</td><td>Legacy</td><td>64-element vector, 19-bit FP</td><td>e75, e150, e300</td></tr>
-  <tr><td>Wormhole (WH)</td><td>Current</td><td>32-element vector, 32-bit FP, 800G Ethernet</td><td>n150 (1 chip), n300 (2 chips)</td></tr>
-  <tr><td>Blackhole (BH)</td><td>Current (active dev)</td><td>32-element vector, 32-bit FP, enhanced perf</td><td>p100, p150</td></tr>
-</table>
-
-<h3>3.8. Multi-Chip Scaling — Ethernet, Not NVLink</h3>
-<p>Instead of proprietary interconnects like NVIDIA's NVLink, Tenstorrent uses <strong>standard Ethernet</strong> (up to 800 Gbps) to connect chips. The scaling hierarchy:</p>
-<table>
-  <tr><th>Configuration</th><th>Chips</th><th>Name</th><th>Example Model</th></tr>
-  <tr><td>1 chip</td><td>1</td><td>n150 / p150</td><td>Llama 3.2 3B</td></tr>
-  <tr><td>2 chips (Ethernet-linked)</td><td>2</td><td>n300</td><td>Qwen 2.5 7B (TP=2)</td></tr>
-  <tr><td>8 chips (mesh)</td><td>8</td><td>QuietBox</td><td>Llama 3.1 70B (TP=8), DeepSeek R1</td></tr>
-  <tr><td>32 chips</td><td>32</td><td>Galaxy</td><td>Llama 3.3 70B (TP=32) — 2,269 T/S</td></tr>
-  <tr><td>Multi-host mesh</td><td>32+ × N</td><td>tt-Fabric</td><td>Data-center scale training</td></tr>
+  <tr><th>Model</th><th>n150</th><th>n300</th><th>QuietBox (8-chip)</th><th>Galaxy (32-chip)</th></tr>
+  <tr><td>Llama 3.2 1B</td><td>128k</td><td>128k</td><td>128k</td><td>128k</td></tr>
+  <tr><td>Llama 3.2 3B</td><td>8k</td><td>128k</td><td>128k</td><td>128k</td></tr>
+  <tr><td>Llama 3.1 8B</td><td>4k</td><td>64k</td><td>128k</td><td>128k</td></tr>
+  <tr><td>Llama 3.2 11B</td><td>4k</td><td>64k</td><td>128k</td><td>128k</td></tr>
+  <tr><td>Llama 3.1 70B</td><td>—</td><td>—</td><td>32k</td><td>128k</td></tr>
 </table>
 
 <!-- ──────────── METALIUM ──────────── -->
-<h2 id="metalium">4. TT-Metalium — The Low-Level SDK</h2>
+   284|<h2 id="metalium">4. TT-Metalium — The Low-Level SDK</h2>
+   285|
+   286|<div class="tip">
+   287|  <strong>Analogy:</strong> Metalium is to Tenstorrent what <strong>CUDA</strong> is to NVIDIA or what <strong>OpenCL</strong> is to GPUs in general. It gives you direct control over the hardware — you allocate buffers, compile kernels, configure circular buffers, and enqueue commands. If TT-NN is "write Python, get results," Metalium is "write C++ kernels that run on individual RISC-V cores."
+   288|</div>
+   289|
+   290|<h3>4.1. The Metalium Programming Flow</h3>
+   291|<p>Every Metalium program follows this exact sequence:</p>
+   292|<ol>
+   293|  <li><strong>Open a Device</strong> — <code>MeshDevice::create_unit_mesh(device_id)</code></li>
+   294|  <li><strong>Get a Command Queue</strong> — <code>device->mesh_command_queue(cq_id)</code></li>
+   295|  <li><strong>Create a Program</strong> — <code>tt::tt_metal::CreateProgram()</code></li>
+   296|  <li><strong>Allocate Buffers</strong> — <code>MeshBuffer::create(...)</code> for inputs/outputs in DRAM</li>
+   297|  <li><strong>Transfer Input Data</strong> — <code>EnqueueWriteMeshBuffer(cq, buffer, data)</code></li>
+   298|  <li><strong>Create Circular Buffers</strong> — <code>CreateCircularBuffer(program, core, config)</code> for inter-kernel data</li>
+   299|  <li><strong>Compile Kernels</strong> — <code>CreateKernel(program, "path/to/kernel.cpp", core, config)</code></li>
+   300|  <li><strong>Set Runtime Args</strong> — <code>SetRuntimeArgs(program, kernel, core, args)</code></li>
+   301|  <li><strong>Enqueue and Execute</strong> — <code>EnqueueMeshWorkload(cq, workload)</code></li>
+   302|  <li><strong>Read Results</strong> — <code>EnqueueReadMeshBuffer(cq, output, host_data)</code></li>
+   303|</ol>
+   304|
+   305|<h3>4.2. Three Kernels Per Operation</h3>
+   306|<p>A typical Metalium operation uses <strong>exactly three kernels</strong> running on each Tensix core:</p>
+   307|<table>
+   308|  <tr><th>Kernel</th><th>Runs On</th><th>Responsibility</th><th>API Include</th></tr>
+   309|  <tr><td>Reader</td><td>DM0 (RISCV_0)</td><td>Pulls tiles from DRAM into CB_in via NoC0</td><td><code>dataflow_api.h</code></td></tr>
+   310|  <tr><td>Compute</td><td>Unpack + Math + Pack</td><td>Performs the actual math operation on tiles</td><td><code>compute_kernel_api.h</code></td></tr>
+   311|  <tr><td>Writer</td><td>DM1 (RISCV_1)</td><td>Pushes results from CB_out to DRAM via NoC1</td><td><code>dataflow_api.h</code></td></tr>
+   312|</table>
+   313|
+   314|<h4>4.2.1. Reader Kernel Example</h4>
+   315|<pre><code>#include &lt;dataflow_api.h&gt;
+   316|
+   317|void kernel_main() {
+   318|    const uint32_t a_addr  = get_arg_val&lt;uint32_t&gt;(0);
+   319|    const uint32_t b_addr  = get_arg_val&lt;uint32_t&gt;(1);
+   320|    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(2);
+   321|
+   322|    constexpr auto cb_in0 = tt::CBIndex::c_0;
+   323|    constexpr auto cb_in1 = tt::CBIndex::c_1;
+   324|    const uint32_t tile_size_bytes = get_tile_size(cb_in0);
+   325|
+   326|    constexpr auto args_a = TensorAccessorArgs&lt;0&gt;();
+   327|    const auto a = TensorAccessor(args_a, a_addr, tile_size_bytes);
+   328|    constexpr auto args_b = TensorAccessorArgs&lt;args_a.next_compile_time_args_offset()&gt;();
+   329|    const auto b = TensorAccessor(args_b, b_addr, tile_size_bytes);
+   330|
+   331|    for (uint32_t i = 0; i &lt; n_tiles; i++) {
+   332|        cb_reserve_back(cb_in0, 1);
+   333|        cb_reserve_back(cb_in1, 1);
+   334|        const uint32_t cb_in0_addr = get_write_ptr(cb_in0);
+   335|        const uint32_t cb_in1_addr = get_write_ptr(cb_in1);
+   336|        noc_async_read_tile(i, a, cb_in0_addr);
+   337|        noc_async_read_tile(i, b, cb_in1_addr);
+   338|        noc_async_read_barrier();  // Wait for NoC reads to complete
+   339|        cb_push_back(cb_in0, 1);
+   340|        cb_push_back(cb_in1, 1);
+   341|    }
+   342|}</code></pre>
+   343|
+   344|<h4>4.2.2. Compute Kernel Example</h4>
+   345|<pre><code>#include &lt;compute_kernel_api.h&gt;
+   346|#include &lt;compute_kernel_api/common.h&gt;
+   347|#include &lt;compute_kernel_api/eltwise_binary.h&gt;
+   348|
+   349|void kernel_main() {
+   350|    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(0);
+   351|    constexpr auto cb_in0  = tt::CBIndex::c_0;
+   352|    constexpr auto cb_in1  = tt::CBIndex::c_1;
+   353|    constexpr auto cb_out  = tt::CBIndex::c_16;
+   354|    constexpr uint32_t dst_reg = 0;
+   355|
+   356|    binary_op_init_common(cb_in0, cb_in1, cb_out);  // Unpack+Math+Pack
+   357|    add_tiles_init(cb_in0, cb_in1, false);           // Unpack+Math
+   358|
+   359|    for (uint32_t i = 0; i &lt; n_tiles; i++) {
+   360|        cb_wait_front(cb_in0, 1);          // Unpack: wait for data
+   361|        cb_wait_front(cb_in1, 1);          // Unpack: wait for data
+   362|        tile_regs_acquire();               // Math: lock Dst register
+   363|        add_tiles(cb_in0, cb_in1, 0, 0, dst_reg);  // Unpack+Math: DO THE ADD
+   364|        tile_regs_commit();                // Math: unlock Dst register
+   365|        cb_pop_front(cb_in0, 1);           // Unpack: free input
+   366|        cb_pop_front(cb_in1, 1);           // Unpack: free input
+   367|        cb_reserve_back(cb_out, 1);        // Pack: reserve output space
+   368|        tile_regs_wait();                  // Pack: wait for Dst ready
+   369|        pack_tile(dst_reg, cb_out, 0);     // Pack: write result to CB
+   370|        tile_regs_release();               // Pack: release Dst
+   371|        cb_push_back(cb_out, 1);           // Pack: signal output ready
+   372|    }
+   373|}</code></pre>
+   374|
+   375|<h4>4.2.3. Writer Kernel Example</h4>
+   376|<pre><code>#include &lt;dataflow_api.h&gt;
+   377|
+   378|void kernel_main() {
+   379|    const uint32_t c_addr  = get_arg_val&lt;uint32_t&gt;(0);
+   380|    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(1);
+   381|    constexpr auto cb_out = tt::CBIndex::c_16;
+   382|    const uint32_t tile_size_bytes = get_tile_size(cb_out);
+   383|
+   384|    constexpr auto args_c = TensorAccessorArgs&lt;0&gt;();
+   385|    const auto c = TensorAccessor(args_c, c_addr, tile_size_bytes);
+   386|
+   387|    for (uint32_t i = 0; i &lt; n_tiles; i++) {
+   388|        cb_wait_front(cb_out, 1);
+   389|        const uint32_t cb_out_addr = get_read_ptr(cb_out);
+   390|        noc_async_write_tile(i, c, cb_out_addr);
+   391|        noc_async_write_barrier();
+   392|        cb_pop_front(cb_out, 1);
+   393|    }
+   394|}</code></pre>
+   395|
+   396|<h3>4.3. Circular Buffers — The Synchronization Mechanism</h3>
+   397|<p>Circular buffers are ring buffers in SRAM that coordinate data flow between kernels:</p>
+   398|<ul>
+   399|  <li><strong>Reader writes</strong> tiles into <code>cb_in0</code> and calls <code>cb_push_back</code></li>
+   400|  <li><strong>Compute waits</strong> on <code>cb_wait_front</code>, processes, writes to <code>cb_out</code> via <code>cb_push_back</code></li>
+   401|  <li><strong>Writer waits</strong> on <code>cb_wait_front(cb_out)</code>, then writes to DRAM and calls <code>cb_pop_front</code></li>
+   402|  <li>Each CB typically holds 2+ tiles — enabling pipelining: reader fetches tile 2 while compute processes tile 1</li>
+   403|</ul>
+   404|<p>This is a <strong>hardware-backed producer-consumer</strong> mechanism. The RISC-V cores use hardware mutex and metadata synchronization — no software spinlocks needed.</p>
+   405|
+   406|<h3>4.4. Compute API — Hardware Abstraction</h3>
+   407|<p>The Compute API solves the problem of <strong>different hardware generations having different vector widths and instruction sets</strong>. When you call <code>add_tiles(...)</code> or <code>sin_tile(...)</code>, the compiler selects the correct implementation for your target chip:</p>
+   408|<ul>
+   409|  <li><strong>Grayskull:</strong> 64-element vectors, 19-bit FP, 4 iterations for sine</li>
+   410|  <li><strong>Wormhole:</strong> 32-element vectors, 32-bit FP, 8 iterations for sine</li>
+   411|  <li><strong>Blackhole:</strong> 32-element vectors, 32-bit FP, 8 iterations (with <code>float_to_int16</code> optimization)</li>
+   412|</ul>
+   413|
+   414|<h3>4.5. SPMD — Single Program, Multiple Data</h3>
+   415|<p>Metalium supports the SPMD model: all Tensix cores run the <strong>same kernel code</strong> but on <strong>different data slices</strong>. There is no built-in <code>threadIdx</code> or <code>get_global_id()</code>. Instead, you explicitly pass different runtime arguments to each core:</p>
+   416|<pre><code>auto [num_cores, all_cores, core_group_1, core_group_2,
+   417|      num_tiles_per_core_group_1, num_tiles_per_core_group_2]
+   418|    = tt::tt_metal::split_work_to_cores(grid_size, work_size);
+   419|
+   420|for (const auto& core : all_cores) {
+   421|    SetRuntimeArgs(program, reader, core, {a_addr, b_addr, work_per_core, core_id});
+   422|    SetRuntimeArgs(program, compute, core, {work_per_core});
+   423|    SetRuntimeArgs(program, writer, core, {c_addr, work_per_core, core_id});
+   424|}</code></pre>
+   425|
+   426|<h3>4.6. Fast Dispatch vs. Slow Dispatch</h3>
+   427|<table>
+   428|  <tr><th>Mode</th><th>Mechanism</th><th>CPU Overhead</th><th>Use Case</th></tr>
+   429|  <tr><td>Fast Dispatch (default)</td><td>Dedicated RISC-V core processes command queue; device fetches commands independently</td><td>Low</td><td>Production workloads</td></tr>
+   430|  <tr><td>Slow Dispatch (<code>TT_METAL_SLOW_DISPATCH_MODE=1</code>)</td><td>Host CPU manages every operation synchronously</td><td>High</td><td>Debugging only</td></tr>
+   431|</table>
+   432|
+   433|<p>Fast dispatch uses two command queues (queue 0: compute, queue 1: data transfers), synchronized via events:</p>
+   434|<pre><code>MeshEvent event = device->mesh_command_queue(0).enqueue_record_event();
+   435|device->mesh_command_queue(1).enqueue_wait_for_event(event);</code></pre>
+   436|
+   437|<h3>4.7. tt_metal Key Public API Headers (151 total)</h3>
+   438|<p>Selected key headers from <code>tt_metal/api/tt-metalium/</code>:</p>
+   439|<table>
+   440|  <tr><th>Header</th><th>Purpose</th></tr>
+   441|  <tr><td><code>device.hpp</code></td><td>Device initialization, opening, closing</td></tr>
+   442|  <tr><td><code>buffer.hpp</code>, <code>buffer_types.hpp</code></td><td>Memory buffer allocation and management</td></tr>
+   443|  <tr><td><code>circular_buffer.hpp</code>, <code>circular_buffer_config.hpp</code></td><td>CB creation and configuration</td></tr>
+   444|  <tr><td><code>program.hpp</code> (in impl)</td><td>Program (collection of kernels + CBs + args)</td></tr>
+   445|  <tr><td><code>hal.hpp</code>, <code>hal_types.hpp</code></td><td>Hardware Abstraction Layer — chip-specific dispatch</td></tr>
+   446|  <tr><td><code>mesh_device.hpp</code></td><td>Multi-device mesh management</td></tr>
+   447|  <tr><td><code>mesh_command_queue.hpp</code></td><td>Command queue for mesh workloads</td></tr>
+   448|  <tr><td><code>allocator.hpp</code></td><td>DRAM and SRAM memory allocator</td></tr>
+   449|  <tr><td><code>distributed.hpp</code></td><td>Multi-host distributed execution</td></tr>
+   450|  <tr><td><code>graph_tracking.hpp</code></td><td>Execution graph capture and replay</td></tr>
+   451|  <tr><td><code>kernel_types.hpp</code></td><td>Kernel configuration (DataMovementConfig, ComputeConfig)</td></tr>
+   452|  <tr><td><code>bfloat16.hpp</code> ~ <code>float8.hpp</code></td><td>Custom floating-point type definitions</td></tr>
+   453|  <tr><td><code>data_types.hpp</code></td><td>DataFormat enum for tile data types</td></tr>
+   454|  <tr><td><code>constants.hpp</code></td><td>TILE_WIDTH=32, TILE_HEIGHT=32 constants</td></tr>
+   455|  <tr><td><code>global_circular_buffer.hpp</code></td><td>Multi-core shared circular buffers</td></tr>
+   456|  <tr><td><code>global_semaphore.hpp</code></td><td>Cross-core synchronization semaphores</td></tr>
+   457|  <tr><td><code>profiler_types.hpp</code></td><td>Performance profiling data structures</td></tr>
+   458|</table>
+   459|
+   460|<!-- ──────────── END-TO-END PROGRAMMING ──────────── -->
+<h2 id="end-to-end">5. End-to-End Programming: Your First TT-Metal Program</h2>
 
 <div class="tip">
-  <strong>Analogy:</strong> Metalium is to Tenstorrent what <strong>CUDA</strong> is to NVIDIA or what <strong>OpenCL</strong> is to GPUs in general. It gives you direct control over the hardware — you allocate buffers, compile kernels, configure circular buffers, and enqueue commands. If TT-NN is "write Python, get results," Metalium is "write C++ kernels that run on individual RISC-V cores."
+  <strong>Previously shown:</strong> kernel code snippets (reader, compute, writer). <strong>Now:</strong> the complete host-side program that ties everything together — allocate buffers, compile kernels, launch execution, read results.
 </div>
 
-<h3>4.1. The Metalium Programming Flow</h3>
-<p>Every Metalium program follows this exact sequence:</p>
-<ol>
-  <li><strong>Open a Device</strong> — <code>MeshDevice::create_unit_mesh(device_id)</code></li>
-  <li><strong>Get a Command Queue</strong> — <code>device->mesh_command_queue(cq_id)</code></li>
-  <li><strong>Create a Program</strong> — <code>tt::tt_metal::CreateProgram()</code></li>
-  <li><strong>Allocate Buffers</strong> — <code>MeshBuffer::create(...)</code> for inputs/outputs in DRAM</li>
-  <li><strong>Transfer Input Data</strong> — <code>EnqueueWriteMeshBuffer(cq, buffer, data)</code></li>
-  <li><strong>Create Circular Buffers</strong> — <code>CreateCircularBuffer(program, core, config)</code> for inter-kernel data</li>
-  <li><strong>Compile Kernels</strong> — <code>CreateKernel(program, "path/to/kernel.cpp", core, config)</code></li>
-  <li><strong>Set Runtime Args</strong> — <code>SetRuntimeArgs(program, kernel, core, args)</code></li>
-  <li><strong>Enqueue and Execute</strong> — <code>EnqueueMeshWorkload(cq, workload)</code></li>
-  <li><strong>Read Results</strong> — <code>EnqueueReadMeshBuffer(cq, output, host_data)</code></li>
-</ol>
+<h3>5.1. Complete Host Program (Python via TT-NN)</h3>
+<p>This is the simplest complete program: add two tensors on-device and read back the result.</p>
+<pre><code>import torch
+import ttnn
 
-<h3>4.2. Three Kernels Per Operation</h3>
-<p>A typical Metalium operation uses <strong>exactly three kernels</strong> running on each Tensix core:</p>
-<table>
-  <tr><th>Kernel</th><th>Runs On</th><th>Responsibility</th><th>API Include</th></tr>
-  <tr><td>Reader</td><td>DM0 (RISCV_0)</td><td>Pulls tiles from DRAM into CB_in via NoC0</td><td><code>dataflow_api.h</code></td></tr>
-  <tr><td>Compute</td><td>Unpack + Math + Pack</td><td>Performs the actual math operation on tiles</td><td><code>compute_kernel_api.h</code></td></tr>
-  <tr><td>Writer</td><td>DM1 (RISCV_1)</td><td>Pushes results from CB_out to DRAM via NoC1</td><td><code>dataflow_api.h</code></td></tr>
-</table>
+# 1. Initialize device
+device = ttnn.open_device(device_id=0)
 
-<h4>4.2.1. Reader Kernel Example</h4>
-<pre><code>#include &lt;dataflow_api.h&gt;
+# 2. Create input data on host
+torch_a = torch.rand((1, 1, 32, 32), dtype=torch.bfloat16)
+torch_b = torch.rand((1, 1, 32, 32), dtype=torch.bfloat16)
 
-void kernel_main() {
-    const uint32_t a_addr  = get_arg_val&lt;uint32_t&gt;(0);
-    const uint32_t b_addr  = get_arg_val&lt;uint32_t&gt;(1);
-    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(2);
+# 3. Move tensors to device (tile-aligned: 32×32)
+tt_a = ttnn.from_torch(torch_a, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+tt_b = ttnn.from_torch(torch_b, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
 
-    constexpr auto cb_in0 = tt::CBIndex::c_0;
-    constexpr auto cb_in1 = tt::CBIndex::c_1;
-    const uint32_t tile_size_bytes = get_tile_size(cb_in0);
+# 4. Run operation on device
+tt_c = ttnn.add(tt_a, tt_b)
 
-    constexpr auto args_a = TensorAccessorArgs&lt;0&gt;();
-    const auto a = TensorAccessor(args_a, a_addr, tile_size_bytes);
-    constexpr auto args_b = TensorAccessorArgs&lt;args_a.next_compile_time_args_offset()&gt;();
-    const auto b = TensorAccessor(args_b, b_addr, tile_size_bytes);
+# 5. Read result back to host
+torch_c = ttnn.to_torch(tt_c)
+print(f"Result matches: {torch.allclose(torch_c, torch_a + torch_b)}")
 
-    for (uint32_t i = 0; i &lt; n_tiles; i++) {
-        cb_reserve_back(cb_in0, 1);
-        cb_reserve_back(cb_in1, 1);
-        const uint32_t cb_in0_addr = get_write_ptr(cb_in0);
-        const uint32_t cb_in1_addr = get_write_ptr(cb_in1);
-        noc_async_read_tile(i, a, cb_in0_addr);
-        noc_async_read_tile(i, b, cb_in1_addr);
-        noc_async_read_barrier();  // Wait for NoC reads to complete
-        cb_push_back(cb_in0, 1);
-        cb_push_back(cb_in1, 1);
-    }
+# 6. Close device
+ttnn.close_device(device)</code></pre>
+
+<h3>5.2. Complete Host Program (C++ via Metalium API)</h3>
+<pre><code>#include "tt_metal/api/tt-metalium/device.hpp"
+#include "tt_metal/api/tt-metalium/buffer.hpp"
+#include "tt_metal/api/tt-metalium/mesh_device.hpp"
+#include "tt_metal/api/tt-metalium/mesh_command_queue.hpp"
+
+int main() {
+    // 1. Open device
+    auto mesh = tt::tt_metal::MeshDevice::create_unit_mesh(0);
+    auto& device = *mesh;
+    auto& cq = device.mesh_command_queue(0);
+
+    // 2. Allocate input/output buffers in DRAM
+    constexpr uint32_t size = 32 * 32 * 2;  // 32x32 bfloat16
+    auto buf_a = tt::tt_metal::MeshBuffer::create(
+        mesh, size, tt::tt_metal::BufferType::DRAM, tt::tt_metal::TensorMemoryLayout::INTERLEAVED);
+    auto buf_b = tt::tt_metal::MeshBuffer::create(
+        mesh, size, tt::tt_metal::BufferType::DRAM, tt::tt_metal::TensorMemoryLayout::INTERLEAVED);
+    auto buf_c = tt::tt_metal::MeshBuffer::create(
+        mesh, size, tt::tt_metal::BufferType::DRAM, tt::tt_metal::TensorMemoryLayout::INTERLEAVED);
+
+    // 3. Write input data to device
+    std::vector&lt;uint16_t&gt; data_a(size/2, 0x3F80);  // bf16(1.0)
+    std::vector&lt;uint16_t&gt; data_b(size/2, 0x4000);  // bf16(2.0)
+    cq.enqueue_write_buffer(buf_a, data_a.data(), false);
+    cq.enqueue_write_buffer(buf_b, data_b.data(), false);
+
+    // 4. Create program
+    auto program = tt::tt_metal::CreateProgram();
+
+    // 5. Create circular buffers (same CB indices as kernel expects)
+    auto cb_config = tt::tt_metal::CircularBufferConfig(size, {{tt::CBIndex::c_0, tt::DataFormat::Float16_b}});
+    auto cb0 = tt::tt_metal::CreateCircularBuffer(program, core, cb_config);
+    // ... cb1, cb_out similarly
+
+    // 6. Compile kernels
+    auto reader_kernel = tt::tt_metal::CreateKernel(
+        program, "kernels/reader.cpp", core,
+        tt::tt_metal::DataMovementConfig{.processor = tt::tt_metal::DataMovementProcessor::RISCV_0});
+    auto compute_kernel = tt::tt_metal::CreateKernel(
+        program, "kernels/compute.cpp", core,
+        tt::tt_metal::ComputeConfig{});
+    auto writer_kernel = tt::tt_metal::CreateKernel(
+        program, "kernels/writer.cpp", core,
+        tt::tt_metal::DataMovementConfig{.processor = tt::tt_metal::DataMovementProcessor::RISCV_1});
+
+    // 7. Set runtime args
+    const std::vector&lt;uint32_t&gt; reader_args = {buf_a->address(), buf_b->address(), /*n_tiles=*/1};
+    tt::tt_metal::SetRuntimeArgs(program, reader_kernel, core, reader_args);
+
+    // 8. Enqueue and execute
+    tt::tt_metal::EnqueueMeshWorkload(cq, {program}, false);
+
+    // 9. Read results
+    std::vector&lt;uint16_t&gt; result(size/2);
+    cq.enqueue_read_buffer(buf_c, result.data(), true);
+
+    // 10. Cleanup
+    tt::tt_metal::detail::CloseDevice(mesh);
+    return 0;
 }</code></pre>
 
-<h4>4.2.2. Compute Kernel Example</h4>
-<pre><code>#include &lt;compute_kernel_api.h&gt;
-#include &lt;compute_kernel_api/common.h&gt;
-#include &lt;compute_kernel_api/eltwise_binary.h&gt;
-
-void kernel_main() {
-    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(0);
-    constexpr auto cb_in0  = tt::CBIndex::c_0;
-    constexpr auto cb_in1  = tt::CBIndex::c_1;
-    constexpr auto cb_out  = tt::CBIndex::c_16;
-    constexpr uint32_t dst_reg = 0;
-
-    binary_op_init_common(cb_in0, cb_in1, cb_out);  // Unpack+Math+Pack
-    add_tiles_init(cb_in0, cb_in1, false);           // Unpack+Math
-
-    for (uint32_t i = 0; i &lt; n_tiles; i++) {
-        cb_wait_front(cb_in0, 1);          // Unpack: wait for data
-        cb_wait_front(cb_in1, 1);          // Unpack: wait for data
-        tile_regs_acquire();               // Math: lock Dst register
-        add_tiles(cb_in0, cb_in1, 0, 0, dst_reg);  // Unpack+Math: DO THE ADD
-        tile_regs_commit();                // Math: unlock Dst register
-        cb_pop_front(cb_in0, 1);           // Unpack: free input
-        cb_pop_front(cb_in1, 1);           // Unpack: free input
-        cb_reserve_back(cb_out, 1);        // Pack: reserve output space
-        tile_regs_wait();                  // Pack: wait for Dst ready
-        pack_tile(dst_reg, cb_out, 0);     // Pack: write result to CB
-        tile_regs_release();               // Pack: release Dst
-        cb_push_back(cb_out, 1);           // Pack: signal output ready
-    }
-}</code></pre>
-
-<h4>4.2.3. Writer Kernel Example</h4>
-<pre><code>#include &lt;dataflow_api.h&gt;
-
-void kernel_main() {
-    const uint32_t c_addr  = get_arg_val&lt;uint32_t&gt;(0);
-    const uint32_t n_tiles = get_arg_val&lt;uint32_t&gt;(1);
-    constexpr auto cb_out = tt::CBIndex::c_16;
-    const uint32_t tile_size_bytes = get_tile_size(cb_out);
-
-    constexpr auto args_c = TensorAccessorArgs&lt;0&gt;();
-    const auto c = TensorAccessor(args_c, c_addr, tile_size_bytes);
-
-    for (uint32_t i = 0; i &lt; n_tiles; i++) {
-        cb_wait_front(cb_out, 1);
-        const uint32_t cb_out_addr = get_read_ptr(cb_out);
-        noc_async_write_tile(i, c, cb_out_addr);
-        noc_async_write_barrier();
-        cb_pop_front(cb_out, 1);
-    }
-}</code></pre>
-
-<h3>4.3. Circular Buffers — The Synchronization Mechanism</h3>
-<p>Circular buffers are ring buffers in SRAM that coordinate data flow between kernels:</p>
-<ul>
-  <li><strong>Reader writes</strong> tiles into <code>cb_in0</code> and calls <code>cb_push_back</code></li>
-  <li><strong>Compute waits</strong> on <code>cb_wait_front</code>, processes, writes to <code>cb_out</code> via <code>cb_push_back</code></li>
-  <li><strong>Writer waits</strong> on <code>cb_wait_front(cb_out)</code>, then writes to DRAM and calls <code>cb_pop_front</code></li>
-  <li>Each CB typically holds 2+ tiles — enabling pipelining: reader fetches tile 2 while compute processes tile 1</li>
-</ul>
-<p>This is a <strong>hardware-backed producer-consumer</strong> mechanism. The RISC-V cores use hardware mutex and metadata synchronization — no software spinlocks needed.</p>
-
-<h3>4.4. Compute API — Hardware Abstraction</h3>
-<p>The Compute API solves the problem of <strong>different hardware generations having different vector widths and instruction sets</strong>. When you call <code>add_tiles(...)</code> or <code>sin_tile(...)</code>, the compiler selects the correct implementation for your target chip:</p>
-<ul>
-  <li><strong>Grayskull:</strong> 64-element vectors, 19-bit FP, 4 iterations for sine</li>
-  <li><strong>Wormhole:</strong> 32-element vectors, 32-bit FP, 8 iterations for sine</li>
-  <li><strong>Blackhole:</strong> 32-element vectors, 32-bit FP, 8 iterations (with <code>float_to_int16</code> optimization)</li>
-</ul>
-
-<h3>4.5. SPMD — Single Program, Multiple Data</h3>
-<p>Metalium supports the SPMD model: all Tensix cores run the <strong>same kernel code</strong> but on <strong>different data slices</strong>. There is no built-in <code>threadIdx</code> or <code>get_global_id()</code>. Instead, you explicitly pass different runtime arguments to each core:</p>
-<pre><code>auto [num_cores, all_cores, core_group_1, core_group_2,
+<h3>5.3. SPMD Work Distribution</h3>
+<pre><code>// Distribute work across all available cores
+auto [num_cores, all_cores, core_group_1, core_group_2,
       num_tiles_per_core_group_1, num_tiles_per_core_group_2]
-    = tt::tt_metal::split_work_to_cores(grid_size, work_size);
+    = tt::tt_metal::split_work_to_cores(grid_size, total_tiles);
 
 for (const auto& core : all_cores) {
-    SetRuntimeArgs(program, reader, core, {a_addr, b_addr, work_per_core, core_id});
-    SetRuntimeArgs(program, compute, core, {work_per_core});
-    SetRuntimeArgs(program, writer, core, {c_addr, work_per_core, core_id});
+    SetRuntimeArgs(program, reader, core, {a_addr, b_addr, tiles_per_core, core_id});
+    SetRuntimeArgs(program, compute, core, {tiles_per_core});
+    SetRuntimeArgs(program, writer, core, {c_addr, tiles_per_core, core_id});
 }</code></pre>
 
-<h3>4.6. Fast Dispatch vs. Slow Dispatch</h3>
-<table>
-  <tr><th>Mode</th><th>Mechanism</th><th>CPU Overhead</th><th>Use Case</th></tr>
-  <tr><td>Fast Dispatch (default)</td><td>Dedicated RISC-V core processes command queue; device fetches commands independently</td><td>Low</td><td>Production workloads</td></tr>
-  <tr><td>Slow Dispatch (<code>TT_METAL_SLOW_DISPATCH_MODE=1</code>)</td><td>Host CPU manages every operation synchronously</td><td>High</td><td>Debugging only</td></tr>
-</table>
-
-<p>Fast dispatch uses two command queues (queue 0: compute, queue 1: data transfers), synchronized via events:</p>
-<pre><code>MeshEvent event = device->mesh_command_queue(0).enqueue_record_event();
-device->mesh_command_queue(1).enqueue_wait_for_event(event);</code></pre>
-
-<h3>4.7. tt_metal Key Public API Headers (151 total)</h3>
-<p>Selected key headers from <code>tt_metal/api/tt-metalium/</code>:</p>
-<table>
-  <tr><th>Header</th><th>Purpose</th></tr>
-  <tr><td><code>device.hpp</code></td><td>Device initialization, opening, closing</td></tr>
-  <tr><td><code>buffer.hpp</code>, <code>buffer_types.hpp</code></td><td>Memory buffer allocation and management</td></tr>
-  <tr><td><code>circular_buffer.hpp</code>, <code>circular_buffer_config.hpp</code></td><td>CB creation and configuration</td></tr>
-  <tr><td><code>program.hpp</code> (in impl)</td><td>Program (collection of kernels + CBs + args)</td></tr>
-  <tr><td><code>hal.hpp</code>, <code>hal_types.hpp</code></td><td>Hardware Abstraction Layer — chip-specific dispatch</td></tr>
-  <tr><td><code>mesh_device.hpp</code></td><td>Multi-device mesh management</td></tr>
-  <tr><td><code>mesh_command_queue.hpp</code></td><td>Command queue for mesh workloads</td></tr>
-  <tr><td><code>allocator.hpp</code></td><td>DRAM and SRAM memory allocator</td></tr>
-  <tr><td><code>distributed.hpp</code></td><td>Multi-host distributed execution</td></tr>
-  <tr><td><code>graph_tracking.hpp</code></td><td>Execution graph capture and replay</td></tr>
-  <tr><td><code>kernel_types.hpp</code></td><td>Kernel configuration (DataMovementConfig, ComputeConfig)</td></tr>
-  <tr><td><code>bfloat16.hpp</code> ~ <code>float8.hpp</code></td><td>Custom floating-point type definitions</td></tr>
-  <tr><td><code>data_types.hpp</code></td><td>DataFormat enum for tile data types</td></tr>
-  <tr><td><code>constants.hpp</code></td><td>TILE_WIDTH=32, TILE_HEIGHT=32 constants</td></tr>
-  <tr><td><code>global_circular_buffer.hpp</code></td><td>Multi-core shared circular buffers</td></tr>
-  <tr><td><code>global_semaphore.hpp</code></td><td>Cross-core synchronization semaphores</td></tr>
-  <tr><td><code>profiler_types.hpp</code></td><td>Performance profiling data structures</td></tr>
-</table>
-
-<!-- ──────────── TT-NN ──────────── -->
-<h2 id="ttnn">5. TT-NN — The High-Level Operator Library</h2>
-
-<div class="tip">
-  <strong>Analogy:</strong> TT-NN is to Metalium what <strong>PyTorch</strong> is to CUDA. You write high-level Python, and TT-NN compiles it into optimized Metalium kernels. You don't need to know about circular buffers or RISC-V dispatch unless you want to go really deep.
+<div class="warning">
+  <strong>Critical:</strong> All tensor dimensions must be multiples of 32 (the tile size). A 48×1024 matrix becomes 64×1024 after padding. The packing/unpacking hardware handles this, but wasted memory is real — plan your shapes accordingly.
 </div>
 
-<h3>5.1. Architecture Layers</h3>
-<pre><code>User Python Code
-        │
-    ┌───▼──────────────┐
-    │  TT-NN Python API │  (ttnn/ttnn/operations/*.py — 26 files)
-    │  ttnn.matmul(),   │
-    │  ttnn.reshape(),  │
-    │  ttnn.softmax()...│
-    └───┬──────────────┘
-        │  pybind11 / nanobind
-    ┌───▼──────────────┐
-    │ TT-NN C++ Core    │  (ttnn/cpp/ttnn/operations/ — 33 categories)
-    │  Operation impl,  │
-    │  graph capture,   │
-    │  tensor management│
-    └───┬──────────────┘
-        │  compiler / JIT
-    ┌───▼──────────────┐
-    │  Metalium Kernels  │  (Compiled reader + compute + writer kernels)
-    └───┬──────────────┘
-        │  command queue
-    ┌───▼──────────────┐
-    │  Tenstorrent HW   │
-    └──────────────────┘</code></pre>
+<!-- ──────────── TT-NN ──────────── -->
+   461|<h2 id="ttnn">5. TT-NN — The High-Level Operator Library</h2>
+   462|
+   463|<div class="tip">
+   464|  <strong>Analogy:</strong> TT-NN is to Metalium what <strong>PyTorch</strong> is to CUDA. You write high-level Python, and TT-NN compiles it into optimized Metalium kernels. You don't need to know about circular buffers or RISC-V dispatch unless you want to go really deep.
+   465|</div>
+   466|
+   467|<h3>5.1. Architecture Layers</h3>
+   468|<pre><code>User Python Code
+   469|        │
+   470|    ┌───▼──────────────┐
+   471|    │  TT-NN Python API │  (ttnn/ttnn/operations/*.py — 26 files)
+   472|    │  ttnn.matmul(),   │
+   473|    │  ttnn.reshape(),  │
+   474|    │  ttnn.softmax()...│
+   475|    └───┬──────────────┘
+   476|        │  pybind11 / nanobind
+   477|    ┌───▼──────────────┐
+   478|    │ TT-NN C++ Core    │  (ttnn/cpp/ttnn/operations/ — 33 categories)
+   479|    │  Operation impl,  │
+   480|    │  graph capture,   │
+   481|    │  tensor management│
+   482|    └───┬──────────────┘
+   483|        │  compiler / JIT
+   484|    ┌───▼──────────────┐
+   485|    │  Metalium Kernels  │  (Compiled reader + compute + writer kernels)
+   486|    └───┬──────────────┘
+   487|        │  command queue
+   488|    ┌───▼──────────────┐
+   489|    │  Tenstorrent HW   │
+   490|    └──────────────────┘</code></pre>
+   491|
+   492|<h3>5.2. TT-NN Subdirectories</h3>
+   493|<table>
+   494|  <tr><th>Directory</th><th>Purpose</th></tr>
+   495|  <tr><td><code>ttnn/ttnn/operations/</code></td><td>Python operator definitions (26 files)</td></tr>
+   496|  <tr><td><code>ttnn/cpp/ttnn/operations/</code></td><td>C++ operator implementations (33 categories)</td></tr>
+   497|  <tr><td><code>ttnn/cpp/ttnn-nanobind/</code></td><td>Python bindings via nanobind</td></tr>
+   498|  <tr><td><code>ttnn/core/</code></td><td>Core tensor infrastructure, graph, distributed</td></tr>
+   499|  <tr><td><code>ttnn/api/</code></td><td>Public API definitions</td></tr>
+   500|  <tr><td><code>ttnn/examples/</code></td><td>Tutorial examples (add, eltwise_binary, multicast)</td></tr>
+   501|  <tr><td><code>ttnn/tutorials/</code></td><td>Basic Python tutorials</td></tr>
+   502|  <tr><td><code>ttnn/tt_lib/</code></td><td>Legacy/fallback operator implementations</td></tr>
+   503|</table>
+   504|
+   505|<h3>5.3. Key Operations by Category</h3>
+   506|<table>
+   507|  <tr><th>Category</th><th>Example Operations</th></tr>
+   508|  <tr><td>eltwise</td><td>relu, gelu, sigmoid, tanh, exp, log, add, mul, sub, div, pow, sqrt, abs, neg</td></tr>
+   509|  <tr><td>matmul</td><td>linear, matmul with various layouts (interleaved, sharded, bfp8)</td></tr>
+   510|  <tr><td>normalization</td><td>softmax, layer_norm, rms_norm, batch_norm, group_norm</td></tr>
+   511|  <tr><td>reduction</td><td>sum, mean, max, min, argmax, std, var</td></tr>
+   512|  <tr><td>data_movement</td><td>reshape, permute, transpose, concat, split, pad, slice, repeat</td></tr>
+   513|  <tr><td>creation</td><td>zeros, ones, empty, arange, full, full_like, random</td></tr>
+   514|  <tr><td>conv</td><td>conv2d, conv_transpose2d</td></tr>
+   515|  <tr><td>pool</td><td>max_pool2d, avg_pool2d</td></tr>
+   516|  <tr><td>transformer</td><td>scaled_dot_product_attention, rotary_embedding, attention_mask</td></tr>
+   517|  <tr><td>embedding</td><td>embedding lookup</td></tr>
+   518|  <tr><td>kv_cache</td><td>Key-Value cache operations for LLM inference</td></tr>
+   519|  <tr><td>loss</td><td>cross_entropy, mse, l1_loss, nll_loss</td></tr>
+   520|  <tr><td>ccl</td><td>Collective Communication: all_gather, reduce_scatter, all_reduce</td></tr>
+   521|  <tr><td>copy</td><td>typecast, clone, copy, assign</td></tr>
+   522|  <tr><td>core</td><td>Core tensor utilities, memory layout transformations</td></tr>
+   523|</table>
+   524|
+   525|<!-- ──────────── TT-TRAIN ──────────── -->
+   526|<h2 id="tt-train">6. TT-Train — Training Framework</h2>
+   527|
+   528|<p>TT-Train is a <strong>training framework</strong> built on top of TT-NN/Metalium, providing autograd, optimizers, and training utilities for running on Tenstorrent hardware.</p>
+   529|
+   530|<h3>6.1. Structure (896 files, 572 C++/header, 140 Python, 111,516 lines)</h3>
+   531|<table>
+   532|  <tr><th>Subdirectory</th><th>Purpose</th></tr>
+   533|  <tr><td><code>tt-train/sources/ttml/</code></td><td>Core TTML library — C++ training primitives</td></tr>
+   534|  <tr><td><code>tt-train/sources/examples/</code></td><td>Training example programs</td></tr>
+   535|  <tr><td><code>tt-train/configs/</code></td><td>Training and model configuration files</td></tr>
+   536|  <tr><td><code>tt-train/tests/</code></td><td>Tests: autograd, ops, optimizers, models, schedulers, tokenizers, serialization</td></tr>
+   537|  <tr><td><code>tt-train/scripts/</code></td><td>Training launch and utility scripts</td></tr>
+   538|  <tr><td><code>tt-train/docs/</code></td><td>Documentation (Mixture of Experts, etc.)</td></tr>
+   539|  <tr><td><code>tt-train/tools/</code></td><td>Profiling and weight utilities</td></tr>
+   540|</table>
+   541|
+   542|<!-- ──────────── MODELS ──────────── -->
+   543|<h2 id="models">7. Model Implementations (50+ Models, 796,388 lines)</h2>
+   544|
+   545|<h3>7.1. Production Models (models/demos/)</h3>
+   546|<table>
+   547|  <tr><th>Model</th><th>Hardware</th><th>Performance</th><th>Notes</th></tr>
+   548|  <tr><td>Llama 3.3 70B (TP=32)</td><td>Galaxy (32×WH)</td><td>2,269 T/S, 53ms TTFT</td><td>Largest single-host config</td></tr>
+   549|  <tr><td>DeepSeek R1 Distill 70B</td><td>QuietBox (8×WH)</td><td>509 T/S, 159ms TTFT</td><td>Reasoning model</td></tr>
+   550|  <tr><td>Qwen 3 32B (TP=8)</td><td>QuietBox (8×WH)</td><td>730 T/S, 94ms TTFT</td><td>Latest Qwen generation</td></tr>
+   551|  <tr><td>Qwen 2.5 72B (TP=8)</td><td>QuietBox (8×WH)</td><td>493 T/S, 223ms TTFT</td><td>Large MoE variant</td></tr>
+   552|  <tr><td>Qwen 2.5 7B (TP=2)</td><td>n300 (2×WH)</td><td>707 T/S, 109ms TTFT</td><td>Entry-level LLM</td></tr>
+   553|  <tr><td>Llama 3.1 8B</td><td>n150 / p150</td><td>832 T/S (WH), 1,059 T/S (BH)</td><td>Single-chip capable</td></tr>
+   554|  <tr><td>Llama 3.2 1B</td><td>n150</td><td>2,576 T/S, 23ms TTFT</td><td>Ultra-fast small model</td></tr>
+   555|  <tr><td>Llama 3.2 3B</td><td>n150</td><td>1,491 T/S, 52ms TTFT</td><td>Mid-size fast inference</td></tr>
+   556|  <tr><td>Llama 3.2 11B Vision</td><td>n300</td><td>290 T/S, 714ms TTFT</td><td>Vision-language model</td></tr>
+   557|  <tr><td>Falcon 7B (DP=32)</td><td>Galaxy (32×WH)</td><td>13,517 T/S, 121ms TTFT</td><td>Massive data-parallel batch</td></tr>
+   558|  <tr><td>Falcon 40B (TP=8)</td><td>QuietBox (8×WH)</td><td>381 T/S</td><td>Large Falcon variant</td></tr>
+   559|  <tr><td>Mamba 2.8B</td><td>n150</td><td>451 T/S, 35ms TTFT</td><td>State-space model</td></tr>
+   560|  <tr><td>Mistral 7B</td><td>n150</td><td>918 T/S, 99ms TTFT</td><td>Efficient dense model</td></tr>
+   561|  <tr><td>Mixtral 8x7B (TP=8)</td><td>QuietBox (8×WH)</td><td>797 T/S, 122ms TTFT</td><td>Sparse MoE</td></tr>
+   562|</table>
+   563|
+   564|<h3>7.2. Audio & Vision Models</h3>
+   565|<table>
+   566|  <tr><th>Model</th><th>Hardware</th><th>Performance</th></tr>
+   567|  <tr><td>Whisper distil-large-v3</td><td>n150 / p150</td><td>105 T/S/U (WH), 263 T/S/U (BH), 63ms TTFT (BH)</td></tr>
+   568|  <tr><td>Stable Diffusion 1.4 (512)</td><td>n150 / p150</td><td>4.83 s/img (WH), 3.15 s/img (BH)</td></tr>
+   569|  <tr><td>Stable Diffusion 3.5 Medium</td><td>n150</td><td>16 s/img</td></tr>
+   570|  <tr><td>ResNet-50 (224×224)</td><td>n150</td><td>4,700 img/s (batch 16)</td></tr>
+   571|  <tr><td>ResNet-50 (DP=32)</td><td>Galaxy (32×WH)</td><td>96,800 img/s (batch 512)</td></tr>
+   572|  <tr><td>ResNet-50 (224×224)</td><td>p150</td><td>12,600 img/s (batch 16)</td></tr>
+   573|  <tr><td>ViT-base (224×224)</td><td>n150 / p150</td><td>1,370 img/s (WH), 3,700 img/s (BH)</td></tr>
+   574|  <tr><td>ViT-base (DP=8)</td><td>QuietBox (8×WH)</td><td>7,700 img/s</td></tr>
+   575|  <tr><td>MobileNet-v2</td><td>n150</td><td>3,030 img/s (batch 10)</td></tr>
+   576|  <tr><td>UNet VGG19 (256×256)</td><td>n150 / p150</td><td>198 FPS (WH), 320 FPS (BH)</td></tr>
+   577|  <tr><td>SegFormer (512×512)</td><td>n150</td><td>132 FPS</td></tr>
+   578|  <tr><td>UFLD v2 (320×800)</td><td>n150 / p150</td><td>365 FPS (WH), 551 FPS (BH)</td></tr>
+   579|  <tr><td>BERT-Large</td><td>n150</td><td>270 sentences/s (batch 8)</td></tr>
+   580|  <tr><td>Sentence-BERT</td><td>n150 / p150</td><td>433 sent/s (WH), 929 sent/s (BH)</td></tr>
+   581|</table>
+   582|
+   583|<h3>7.3. Experimental Models (40+ in models/experimental/)</h3>
+   584|<p>These are bring-up/experimental implementations: GPT, Llama, Llama2, Falcon-40B, Grok, Mistral-24B, DeepSeek-V3, BLIP, T5, Swin Transformer, Swin V2, HRNet, InceptionV4, MobileNetV3, EfficientNet, EfficientDet-D0, RetinaNet, SSD512, YOLO, DETR3D, BEVFormer, PETR, TransFuser, UniAD, DeIT, BLIP, VGG, LeNet, MNIST, Mamba, NanoGPT, Stable Diffusion XL, VAE, gemma4, BGE, etc.</p>
+   585|
+   586|<!-- ──────────── RUNNING MODELS ──────────── -->
+<h2 id="running-models">8. Running Models: Commands & Quantization</h2>
 
-<h3>5.2. TT-NN Subdirectories</h3>
+<h3>8.1. LLM Inference (Unified tt_transformers)</h3>
+<p>The modern way to run LLMs — a single entry point for 40+ models (Llama, Qwen, Mistral, Phi, DeepSeek distill):</p>
+<pre><code>huggingface-cli login
+export HF_MODEL=meta-llama/Llama-3.1-8B
+
+# Single prompt, batch-1
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and batch-1"
+
+# Batch-32 throughput test
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and batch-32"
+
+# 64k context length test
+pytest models/tt_transformers/demo/simple_text_demo.py -k "performance and long"</code></pre>
+
+<h3>8.2. Model-Specific Launch Examples</h3>
+
+<h4>Whisper (Audio Transcription)</h4>
+<pre><code>pytest --disable-warnings \
+  --input-path="models/demos/audio/whisper/demo/dataset/conditional_generation" \
+  models/demos/audio/whisper/demo/demo.py::test_demo_for_conditional_generation</code></pre>
+
+<h4>Stable Diffusion 1.4 (Image Generation, 512×512)</h4>
+<pre><code>pytest models/demos/vision/generative/stable_diffusion/wormhole/demo/demo.py::test_demo \
+  --input-path="models/demos/vision/generative/stable_diffusion/wormhole/demo/input_data.json"</code></pre>
+
+<h4>SDXL Base (1024×1024 Image Generation)</h4>
+<pre><code>pytest models/demos/stable_diffusion_xl_base/demo/demo.py \
+  -k "device_vae and device_encoders and with_trace and no_cfg_parallel and 1024x1024"
+
+# CFG Parallel (2-chip, ~40% faster)
+pytest models/demos/stable_diffusion_xl_base/demo/demo.py \
+  -k "device_vae and device_encoders and with_trace and use_cfg_parallel"</code></pre>
+
+<h4>Llama 70B (QuietBox 8-chip)</h4>
+<pre><code># One-time setup
+./models/demos/t3000/llama3_70b/setup_llama.sh llama-3.1-70b-instruct v0.54.0-rc2 &lt;vllm_sha&gt;
+
+# Run
+export LLAMA3_CKPT_DIR=&lt;repacked_output_dir&gt;
+export LLAMA3_TOKENIZER_PATH=&lt;path_to_tokenizer.model&gt;
+export LLAMA3_CACHE_PATH=&lt;weight_cache_dir&gt;
+pytest -svv models/demos/t3000/llama3_70b/demo/demo.py::test_LlamaModel_demo[...]</code></pre>
+
+<h4>Llama 3.3 70B (Galaxy 32-chip)</h4>
+<pre><code>pytest models/demos/llama3_70b_galaxy/demo/text_demo.py -k "performance-batch-32"</code></pre>
+
+<h4>DeepSeek-V3 (Multi-Host Galaxy)</h4>
+<pre><code># Step 1: Dequantize fp8 checkpoint to bf16
+python models/demos/deepseek_v3/scripts/dequantize_hf_checkpoint.py &lt;path_to_hf_model&gt;
+
+# Step 2: Launch on 2× Galaxy
+./models/demos/deepseek_v3/scripts/launch_multihost_galaxy.py 2x -- \
+  python models/demos/deepseek_v3/demo/demo.py --model-path $DEEPSEEK_V3_HF_MODEL \
+  --early_print_first_user "Write a haiku about autumnal days by the sea"</code></pre>
+
+<h3>8.3. Weight Handling</h3>
+<p><strong>Three methods to obtain weights:</strong></p>
+<ol>
+  <li><strong>Automatic HuggingFace download</strong> — set <code>HF_MODEL=org/model</code>, weights auto-downloaded from HuggingFace cache</li>
+  <li><strong>Manual local path</strong> — set <code>HF_MODEL=/path/to/local/weights</code></li>
+  <li><strong>Meta Llama weights</strong> — requires Meta license approval at llama.com, then repack for 70B+ models:
+    <pre><code>python models/demos/t3000/llama2_70b/scripts/repack_weights.py &lt;checkpoint_dir&gt; &lt;output_dir&gt; 5</code></pre>
+  </li>
+</ol>
+
+<p><strong>Weight caching:</strong> First run creates TTNN weight caches (per model, per device) at <code>TT_CACHE_PATH</code> or <code>&lt;HF_MODEL&gt;/&lt;device_name&gt;</code>. Device names: N150, N300, T3K, TG. Subsequent runs skip conversion.</p>
+
+<h3>8.4. Quantization Support</h3>
+<p>TT-Metal uses <strong>block floating-point</strong>, not integer quantization. There is no int8 or int4.</p>
 <table>
-  <tr><th>Directory</th><th>Purpose</th></tr>
-  <tr><td><code>ttnn/ttnn/operations/</code></td><td>Python operator definitions (26 files)</td></tr>
-  <tr><td><code>ttnn/cpp/ttnn/operations/</code></td><td>C++ operator implementations (33 categories)</td></tr>
-  <tr><td><code>ttnn/cpp/ttnn-nanobind/</code></td><td>Python bindings via nanobind</td></tr>
-  <tr><td><code>ttnn/core/</code></td><td>Core tensor infrastructure, graph, distributed</td></tr>
-  <tr><td><code>ttnn/api/</code></td><td>Public API definitions</td></tr>
-  <tr><td><code>ttnn/examples/</code></td><td>Tutorial examples (add, eltwise_binary, multicast)</td></tr>
-  <tr><td><code>ttnn/tutorials/</code></td><td>Basic Python tutorials</td></tr>
-  <tr><td><code>ttnn/tt_lib/</code></td><td>Legacy/fallback operator implementations</td></tr>
+  <tr><th>Format</th><th>Type</th><th>Use Case</th></tr>
+  <tr><td><code>bfloat16</code></td><td>BF16</td><td>Default precision, best accuracy</td></tr>
+  <tr><td><code>bfloat8_b</code></td><td>BFP8 (Block Float 8)</td><td>Most common quantized format — 1.5-1.8× faster than BF16</td></tr>
+  <tr><td><code>bfloat4_b</code></td><td>BFP4 (Block Float 4)</td><td>Aggressive quantization — 2-3.5× faster than BF16</td></tr>
+  <tr><td><code>fp8_e4m3</code></td><td>IEEE FP8</td><td>Used by DeepSeek-V3</td></tr>
+  <tr><td><code>float32</code></td><td>FP32</td><td>Full precision, slow</td></tr>
 </table>
 
-<h3>5.3. Key Operations by Category</h3>
+<h4>Precision Settings (tt_transformers)</h4>
+<pre><code># Accuracy mode (default): bfp8 MLP, BF16 attention
+# Performance mode: bfp4 MLP + bfp8 attention
+
+# Custom precision config:
+pytest models/tt_transformers/demo/simple_text_demo.py -k "accuracy and batch-1" \
+  --optimizations 'precision_cfg = {
+    ff1_3: bfp4, ff2: bfp4, wqkv: bfp8, wo: bfp8,
+    kv_cache: bfp8, activation: mixed
+  }, fidelity_cfg = {
+    li_ff1_3: hifi2, li_ff2: lofi, li_qkv_decode: hifi2,
+    li_o_decode: hifi2, sdpa_decode: hifi2na,
+    li_qkv_prefill: hifi2, li_o_prefill: hifi2fp16, sdpa_prefill: hifi4
+  }'</code></pre>
+
+<h4>Math Fidelity Levels</h4>
 <table>
-  <tr><th>Category</th><th>Example Operations</th></tr>
-  <tr><td>eltwise</td><td>relu, gelu, sigmoid, tanh, exp, log, add, mul, sub, div, pow, sqrt, abs, neg</td></tr>
-  <tr><td>matmul</td><td>linear, matmul with various layouts (interleaved, sharded, bfp8)</td></tr>
-  <tr><td>normalization</td><td>softmax, layer_norm, rms_norm, batch_norm, group_norm</td></tr>
-  <tr><td>reduction</td><td>sum, mean, max, min, argmax, std, var</td></tr>
-  <tr><td>data_movement</td><td>reshape, permute, transpose, concat, split, pad, slice, repeat</td></tr>
-  <tr><td>creation</td><td>zeros, ones, empty, arange, full, full_like, random</td></tr>
-  <tr><td>conv</td><td>conv2d, conv_transpose2d</td></tr>
-  <tr><td>pool</td><td>max_pool2d, avg_pool2d</td></tr>
-  <tr><td>transformer</td><td>scaled_dot_product_attention, rotary_embedding, attention_mask</td></tr>
-  <tr><td>embedding</td><td>embedding lookup</td></tr>
-  <tr><td>kv_cache</td><td>Key-Value cache operations for LLM inference</td></tr>
-  <tr><td>loss</td><td>cross_entropy, mse, l1_loss, nll_loss</td></tr>
-  <tr><td>ccl</td><td>Collective Communication: all_gather, reduce_scatter, all_reduce</td></tr>
-  <tr><td>copy</td><td>typecast, clone, copy, assign</td></tr>
-  <tr><td>core</td><td>Core tensor utilities, memory layout transformations</td></tr>
+  <tr><th>Level</th><th>Speed</th><th>Accuracy</th></tr>
+  <tr><td><code>LOFI</code></td><td>Fastest</td><td>Lowest — BFLOAT4_B</td></tr>
+  <tr><td><code>HIFI2</code></td><td>Fast</td><td>Good — BFLOAT8_B</td></tr>
+  <tr><td><code>HIFI2_NA</code></td><td>Fast</td><td>No accumulation</td></tr>
+  <tr><td><code>HIFI2_FP16</code></td><td>Medium</td><td>FP16 accumulation</td></tr>
+  <tr><td><code>HIFI4</code></td><td>Slow</td><td>Best — BFLOAT16</td></tr>
+  <tr><td><code>HIFI4_FP32</code></td><td>Slowest</td><td>Maximum — FP32 accumulation</td></tr>
 </table>
-
-<!-- ──────────── TT-TRAIN ──────────── -->
-<h2 id="tt-train">6. TT-Train — Training Framework</h2>
-
-<p>TT-Train is a <strong>training framework</strong> built on top of TT-NN/Metalium, providing autograd, optimizers, and training utilities for running on Tenstorrent hardware.</p>
-
-<h3>6.1. Structure (896 files, 572 C++/header, 140 Python, 111,516 lines)</h3>
-<table>
-  <tr><th>Subdirectory</th><th>Purpose</th></tr>
-  <tr><td><code>tt-train/sources/ttml/</code></td><td>Core TTML library — C++ training primitives</td></tr>
-  <tr><td><code>tt-train/sources/examples/</code></td><td>Training example programs</td></tr>
-  <tr><td><code>tt-train/configs/</code></td><td>Training and model configuration files</td></tr>
-  <tr><td><code>tt-train/tests/</code></td><td>Tests: autograd, ops, optimizers, models, schedulers, tokenizers, serialization</td></tr>
-  <tr><td><code>tt-train/scripts/</code></td><td>Training launch and utility scripts</td></tr>
-  <tr><td><code>tt-train/docs/</code></td><td>Documentation (Mixture of Experts, etc.)</td></tr>
-  <tr><td><code>tt-train/tools/</code></td><td>Profiling and weight utilities</td></tr>
-</table>
-
-<!-- ──────────── MODELS ──────────── -->
-<h2 id="models">7. Model Implementations (50+ Models, 796,388 lines)</h2>
-
-<h3>7.1. Production Models (models/demos/)</h3>
-<table>
-  <tr><th>Model</th><th>Hardware</th><th>Performance</th><th>Notes</th></tr>
-  <tr><td>Llama 3.3 70B (TP=32)</td><td>Galaxy (32×WH)</td><td>2,269 T/S, 53ms TTFT</td><td>Largest single-host config</td></tr>
-  <tr><td>DeepSeek R1 Distill 70B</td><td>QuietBox (8×WH)</td><td>509 T/S, 159ms TTFT</td><td>Reasoning model</td></tr>
-  <tr><td>Qwen 3 32B (TP=8)</td><td>QuietBox (8×WH)</td><td>730 T/S, 94ms TTFT</td><td>Latest Qwen generation</td></tr>
-  <tr><td>Qwen 2.5 72B (TP=8)</td><td>QuietBox (8×WH)</td><td>493 T/S, 223ms TTFT</td><td>Large MoE variant</td></tr>
-  <tr><td>Qwen 2.5 7B (TP=2)</td><td>n300 (2×WH)</td><td>707 T/S, 109ms TTFT</td><td>Entry-level LLM</td></tr>
-  <tr><td>Llama 3.1 8B</td><td>n150 / p150</td><td>832 T/S (WH), 1,059 T/S (BH)</td><td>Single-chip capable</td></tr>
-  <tr><td>Llama 3.2 1B</td><td>n150</td><td>2,576 T/S, 23ms TTFT</td><td>Ultra-fast small model</td></tr>
-  <tr><td>Llama 3.2 3B</td><td>n150</td><td>1,491 T/S, 52ms TTFT</td><td>Mid-size fast inference</td></tr>
-  <tr><td>Llama 3.2 11B Vision</td><td>n300</td><td>290 T/S, 714ms TTFT</td><td>Vision-language model</td></tr>
-  <tr><td>Falcon 7B (DP=32)</td><td>Galaxy (32×WH)</td><td>13,517 T/S, 121ms TTFT</td><td>Massive data-parallel batch</td></tr>
-  <tr><td>Falcon 40B (TP=8)</td><td>QuietBox (8×WH)</td><td>381 T/S</td><td>Large Falcon variant</td></tr>
-  <tr><td>Mamba 2.8B</td><td>n150</td><td>451 T/S, 35ms TTFT</td><td>State-space model</td></tr>
-  <tr><td>Mistral 7B</td><td>n150</td><td>918 T/S, 99ms TTFT</td><td>Efficient dense model</td></tr>
-  <tr><td>Mixtral 8x7B (TP=8)</td><td>QuietBox (8×WH)</td><td>797 T/S, 122ms TTFT</td><td>Sparse MoE</td></tr>
-</table>
-
-<h3>7.2. Audio & Vision Models</h3>
-<table>
-  <tr><th>Model</th><th>Hardware</th><th>Performance</th></tr>
-  <tr><td>Whisper distil-large-v3</td><td>n150 / p150</td><td>105 T/S/U (WH), 263 T/S/U (BH), 63ms TTFT (BH)</td></tr>
-  <tr><td>Stable Diffusion 1.4 (512)</td><td>n150 / p150</td><td>4.83 s/img (WH), 3.15 s/img (BH)</td></tr>
-  <tr><td>Stable Diffusion 3.5 Medium</td><td>n150</td><td>16 s/img</td></tr>
-  <tr><td>ResNet-50 (224×224)</td><td>n150</td><td>4,700 img/s (batch 16)</td></tr>
-  <tr><td>ResNet-50 (DP=32)</td><td>Galaxy (32×WH)</td><td>96,800 img/s (batch 512)</td></tr>
-  <tr><td>ResNet-50 (224×224)</td><td>p150</td><td>12,600 img/s (batch 16)</td></tr>
-  <tr><td>ViT-base (224×224)</td><td>n150 / p150</td><td>1,370 img/s (WH), 3,700 img/s (BH)</td></tr>
-  <tr><td>ViT-base (DP=8)</td><td>QuietBox (8×WH)</td><td>7,700 img/s</td></tr>
-  <tr><td>MobileNet-v2</td><td>n150</td><td>3,030 img/s (batch 10)</td></tr>
-  <tr><td>UNet VGG19 (256×256)</td><td>n150 / p150</td><td>198 FPS (WH), 320 FPS (BH)</td></tr>
-  <tr><td>SegFormer (512×512)</td><td>n150</td><td>132 FPS</td></tr>
-  <tr><td>UFLD v2 (320×800)</td><td>n150 / p150</td><td>365 FPS (WH), 551 FPS (BH)</td></tr>
-  <tr><td>BERT-Large</td><td>n150</td><td>270 sentences/s (batch 8)</td></tr>
-  <tr><td>Sentence-BERT</td><td>n150 / p150</td><td>433 sent/s (WH), 929 sent/s (BH)</td></tr>
-</table>
-
-<h3>7.3. Experimental Models (40+ in models/experimental/)</h3>
-<p>These are bring-up/experimental implementations: GPT, Llama, Llama2, Falcon-40B, Grok, Mistral-24B, DeepSeek-V3, BLIP, T5, Swin Transformer, Swin V2, HRNet, InceptionV4, MobileNetV3, EfficientNet, EfficientDet-D0, RetinaNet, SSD512, YOLO, DETR3D, BEVFormer, PETR, TransFuser, UniAD, DeIT, BLIP, VGG, LeNet, MNIST, Mamba, NanoGPT, Stable Diffusion XL, VAE, gemma4, BGE, etc.</p>
 
 <!-- ──────────── BUILD ──────────── -->
-<h2 id="build">8. Build System</h2>
+   587|<h2 id="build">8. Build System</h2>
+   588|
+   589|<h3>8.1. Overview</h3>
+   590|<table>
+   591|  <tr><td>Build Tool</td><td>CMake 3.24+</td></tr>
+   592|  <tr><td>Languages</td><td>C (C99+), C++ (C++20)</td></tr>
+   593|  <tr><td>Default Build Type</td><td>RelWithDebInfo (-O3, -g3, -DDEBUG, -DNDEBUG)</td></tr>
+   594|  <tr><td>Test Framework</td><td>CTest + pytest + GoogleTest (gtest)</td></tr>
+   595|  <tr><td>Static Analysis</td><td>clang-tidy enabled (via <code>cmake/clang-tidy.d/</code>)</td></tr>
+   596|  <tr><td>Sanitizers</td><td>AddressSanitizer, UndefinedBehaviorSanitizer (via <code>cmake/sanitizers.cmake</code>)</td></tr>
+   597|  <tr><td>Unity Builds</td><td>Supported via <code>cmake/unity.cmake</code></td></tr>
+   598|  <tr><td>Toolchain</td><td>Tenstorrent RISC-V GCC/Clang toolchain (in <code>tt_metal/hw/toolchain/</code>)</td></tr>
+   599|  <tr><td>Code Formatting</td><td>clang-format configured (2 files)</td></tr>
+   600|</table>
+   601|
+   602|<h3>8.2. Build Entry Point</h3>
+   603|<pre><code># Build script
+   604|./build_metal.sh
+   605|
+   606|# Or manual CMake
+   607|cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+   608|cmake --build build -j$(nproc)
+   609|
+   610|# Environment setup
+   611|./create_venv.sh           # Python virtual environment
+   612|./install_dependencies.sh  # System dependencies</code></pre>
+   613|
+   614|<h3>8.3. Code Quality Infrastructure</h3>
+   615|<table>
+   616|  <tr><th>Tool</th><th>Config File</th><th>Purpose</th></tr>
+   617|  <tr><td>clang-format</td><td><code>.clang-format</code> (3,966 bytes)</td><td>C++ code formatting</td></tr>
+   618|  <tr><td>clang-tidy</td><td><code>.clang-tidy</code> (6,245 bytes)</td><td>Static analysis & linting</td></tr>
+   619|  <tr><td>CodeChecker</td><td><code>.codechecker.json</code>, <code>.codechecker.skiplist</code></td><td>CI static analysis</td></tr>
+   620|  <tr><td>yamllint</td><td><code>.yamllint</code></td><td>YAML file validation</td></tr>
+   621|  <tr><td>pre-commit</td><td><code>.pre-commit-config.yaml</code> (4,986 bytes)</td><td>Git pre-commit hooks</td></tr>
+   622|</table>
+   623|
+   624|<!-- ──────────── TESTING ──────────── -->
+   625|<h2 id="tests">9. Testing Framework (4,144 files, 743,094 lines)</h2>
+   626|
+   627|<h3>9.1. Test Directory Structure</h3>
+   628|<table>
+   629|  <tr><th>Directory</th><th>Contents</th></tr>
+   630|  <tr><td><code>tests/ttnn/unit_tests/</code></td><td>366 Python + 108 C++ unit tests for TT-NN operations</td></tr>
+   631|  <tr><td><code>tests/ttnn/nightly/</code></td><td>255 Python nightly regression tests</td></tr>
+   632|  <tr><td><code>tests/ttnn/python_api_testing/</code></td><td>34 Python API validation tests</td></tr>
+   633|  <tr><td><code>tests/ttnn/integration_tests/</code></td><td>23 Python end-to-end integration tests</td></tr>
+   634|  <tr><td><code>tests/ttnn/docs_examples/</code></td><td>16 testable documentation examples</td></tr>
+   635|  <tr><td><code>tests/ttnn/distributed/</code></td><td>13 Python multi-device tests</td></tr>
+   636|  <tr><td><code>tests/ttnn/perf_tests/</code></td><td>Performance benchmarks</td></tr>
+   637|  <tr><td><code>tests/ttnn/stress_tests/</code></td><td>5 stress / soak tests</td></tr>
+   638|  <tr><td><code>tests/ttnn/profiling/</code></td><td>5 profiling tests (Tracy integration)</td></tr>
+   639|  <tr><td><code>tests/tt_metal/</code></td><td>Low-level Metalium tests: LLRT, microbenchmarks, distributed, fabric</td></tr>
+   640|  <tr><td><code>tests/tt_eager/</code></td><td>Eager-mode tests: kernels, ops, tensors, Python API</td></tr>
+   641|  <tr><td><code>tests/nightly/</code></td><td>Nightly regressions: single_card, t3000, tg, blackhole</td></tr>
+   642|  <tr><td><code>tests/end_to_end_tests/</code></td><td>Full pipeline tests</td></tr>
+   643|  <tr><td><code>tests/scale_out/</code></td><td>Multi-box scale-out tests</td></tr>
+   644|  <tr><td><code>tests/sweep_framework/</code></td><td>Parameter sweep testing framework with visualization</td></tr>
+   645|</table>
+   646|
+   647|<h3>9.2. Test Configuration</h3>
+   648|<ul>
+   649|  <li><strong>887 YAML test files</strong> define test parameters, hardware targets, and expected results</li>
+   650|  <li>Tests run via <code>pytest</code> (configured in <code>pytest.ini</code>)</li>
+   651|  <li>C++ tests use GoogleTest framework</li>
+   652|  <li>CI/CD via GitHub Actions (workflows in <code>.github/workflows/</code>)</li>
+   653|</ul>
+   654|
+   655|<!-- ──────────── TOOLS ──────────── -->
+   656|<h2 id="tools">10. Tools & Debugging Ecosystem</h2>
+   657|
+   658|<table>
+   659|  <tr><th>Tool</th><th>Repository</th><th>Purpose</th></tr>
+   660|  <tr><td>TT-NN Visualizer</td><td><a href="https://github.com/tenstorrent/ttnn-visualizer">ttnn-visualizer</a></td><td>Interactive model execution graphs, memory plots, tensor details</td></tr>
+   661|  <tr><td>TT-Exalens</td><td><a href="https://github.com/tenstorrent/tt-exalens">tt-exalens</a></td><td>Low-level hardware debugging (TT-Lensium)</td></tr>
+   662|  <tr><td>TT-SMI</td><td><a href="https://github.com/tenstorrent/tt-smi">tt-smi</a></td><td>System Management Interface — device telemetry, firmware info</td></tr>
+   663|  <tr><td>Model Explorer</td><td><a href="https://github.com/tenstorrent/model-explorer">model-explorer</a></td><td>Hierarchical model graph visualization</td></tr>
+   664|  <tr><td>Tracy Profiler</td><td><a href="https://github.com/tenstorrent/tracy">tracy</a></td><td>Real-time ns-resolution CPU/GPU profiling</td></tr>
+   665|  <tr><td>Watcher</td><td>(bundled)</td><td>Firmware/kernel error monitoring, hang detection</td></tr>
+   666|  <tr><td>Inspector</td><td>(bundled)</td><td>Host runtime data queries and logging</td></tr>
+   667|  <tr><td>DPRINT</td><td>(bundled)</td><td>Print variables, addresses, CB data from device kernels to host</td></tr>
+   668|  <tr><td>Metal Profiler</td><td>(bundled)</td><td>Device-side performance counters and profiling</td></tr>
+   669|  <tr><td>JIT Compile Server</td><td>(bundled)</td><td>Caches compiled kernel binaries for faster iteration</td></tr>
+   670|</table>
+   671|
+   672|<h3>10.1. Related Tenstorrent Projects</h3>
+   673|<div style="display:flex;flex-wrap:wrap;gap:8px;margin:1em 0">
+   674|  <span class="tag">TT-Forge</span><span class="tag">TT-Forge-FE</span>
+   675|  <span class="tag">TT-Torch</span><span class="tag">TT-XLA</span>
+   676|  <span class="tag">TT-MLIR</span><span class="tag">TT-TVM</span>
+   677|  <span class="tag">vLLM TT Plugin</span>
+   678|</div>
+   679|
+   680|<!-- ──────────── COMMUNITY ──────────── -->
+<h2 id="community">11. Community & Contributing</h2>
 
-<h3>8.1. Overview</h3>
+<h3>11.1. Where to Get Help</h3>
 <table>
-  <tr><td>Build Tool</td><td>CMake 3.24+</td></tr>
-  <tr><td>Languages</td><td>C (C99+), C++ (C++20)</td></tr>
-  <tr><td>Default Build Type</td><td>RelWithDebInfo (-O3, -g3, -DDEBUG, -DNDEBUG)</td></tr>
-  <tr><td>Test Framework</td><td>CTest + pytest + GoogleTest (gtest)</td></tr>
-  <tr><td>Static Analysis</td><td>clang-tidy enabled (via <code>cmake/clang-tidy.d/</code>)</td></tr>
-  <tr><td>Sanitizers</td><td>AddressSanitizer, UndefinedBehaviorSanitizer (via <code>cmake/sanitizers.cmake</code>)</td></tr>
-  <tr><td>Unity Builds</td><td>Supported via <code>cmake/unity.cmake</code></td></tr>
-  <tr><td>Toolchain</td><td>Tenstorrent RISC-V GCC/Clang toolchain (in <code>tt_metal/hw/toolchain/</code>)</td></tr>
-  <tr><td>Code Formatting</td><td>clang-format configured (2 files)</td></tr>
+  <tr><th>Channel</th><th>Link</th><th>Purpose</th></tr>
+  <tr><td><strong>Discord</strong></td><td><a href="https://discord.gg/tenstorrent">discord.gg/tenstorrent</a></td><td>Real-time chat, community support, announcements — 5,371 members</td></tr>
+  <tr><td><strong>GitHub Issues</strong></td><td><a href="https://github.com/tenstorrent/tt-metal/issues">tt-metal/issues</a></td><td>Bug reports, feature requests, bounty hunting</td></tr>
+  <tr><td><strong>GitHub Discussions</strong></td><td><a href="https://github.com/tenstorrent/tt-metal/discussions">tt-metal/discussions</a></td><td>Long-form Q&A, design discussions</td></tr>
+  <tr><td><strong>Official Docs</strong></td><td><a href="https://docs.tenstorrent.com/tt-metal/latest/">docs.tenstorrent.com</a></td><td>Full API reference and guides</td></tr>
+  <tr><td><strong>Developer Hub</strong></td><td><a href="https://tenstorrent.com/developers">tenstorrent.com/developers</a></td><td>Model compatibility, bounty board, getting started</td></tr>
 </table>
 
-<h3>8.2. Build Entry Point</h3>
-<pre><code># Build script
-./build_metal.sh
+<h3>11.2. How to Contribute</h3>
+<ol>
+  <li><strong>Request write access</strong> — open an issue at tt-metal/issues/new/choose</li>
+  <li><strong>File an issue</strong> — every contribution needs an associated issue</li>
+  <li><strong>Create a branch</strong> — naming: <code>user-ISSUENUMBER-description</code> (e.g., <code>user-123-fix_matmul_edge_case</code>)</li>
+  <li><strong>Develop</strong> — follow coding conventions:
+    <ul>
+      <li>C++: clang-format, clang-tidy, SPDX license headers</li>
+      <li>Python: black, flake8, Loguru for logging</li>
+      <li>C++ logging: TT logger (not printf/cout)</li>
+    </ul>
+  </li>
+  <li><strong>Set up pre-commit</strong>: <code>pip install pre-commit && pre-commit install</code></li>
+  <li><strong>Run post-commit regressions</strong> locally before pushing</li>
+  <li><strong>Open a PR</strong> — categorize with: <code>[Feature]</code>, <code>[Performance]</code>, <code>[Bug fix]</code>, <code>[Cleanup]</code>, <code>[Test Only]</code></li>
+  <li><strong>Get approval</strong> — from a maintaining team member + any CODEOWNERS of touched modules</li>
+  <li><strong>CI must pass</strong> — post-commit pipelines via GitHub Actions</li>
+  <li><strong>Merge</strong> — Squash and merge (preferred)</li>
+</ol>
 
-# Or manual CMake
-cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build -j$(nproc)
+<div class="warning">
+  <strong>No CLA required.</strong> Contributions are under Apache 2.0 with SPDX headers: every source file must include <code>SPDX-FileCopyrightText: © &lt;year&gt; Tenstorrent USA, Inc.</code> and <code>SPDX-License-Identifier: Apache-2.0</code>. Failed post-commit on main gets reverted immediately (with grace period during working hours).
+</div>
 
-# Environment setup
-./create_venv.sh           # Python virtual environment
-./install_dependencies.sh  # System dependencies</code></pre>
-
-<h3>8.3. Code Quality Infrastructure</h3>
+<h3>11.3. Release Cadence</h3>
+<p>Monthly releases. Latest: <strong>v0.67.4</strong> (Mar 30, 2026). Next: <strong>v0.68.0</strong> (ETA Apr 2026). Firmware: v19.2.0, KMD: v2.5.0, SMI: v3.0.38.</p>
 <table>
-  <tr><th>Tool</th><th>Config File</th><th>Purpose</th></tr>
-  <tr><td>clang-format</td><td><code>.clang-format</code> (3,966 bytes)</td><td>C++ code formatting</td></tr>
-  <tr><td>clang-tidy</td><td><code>.clang-tidy</code> (6,245 bytes)</td><td>Static analysis & linting</td></tr>
-  <tr><td>CodeChecker</td><td><code>.codechecker.json</code>, <code>.codechecker.skiplist</code></td><td>CI static analysis</td></tr>
-  <tr><td>yamllint</td><td><code>.yamllint</code></td><td>YAML file validation</td></tr>
-  <tr><td>pre-commit</td><td><code>.pre-commit-config.yaml</code> (4,986 bytes)</td><td>Git pre-commit hooks</td></tr>
+  <tr><th>Release</th><th>Date</th></tr>
+  <tr><td>0.68.0</td><td>ETA Apr 30, 2026</td></tr>
+  <tr><td>0.67.4</td><td>Mar 30, 2026</td></tr>
+  <tr><td>0.67.0</td><td>Mar 25, 2026</td></tr>
+  <tr><td>0.66.0</td><td>Feb 18, 2026</td></tr>
+  <tr><td>0.65.1</td><td>Jan 12, 2026</td></tr>
+  <tr><td>0.65.0</td><td>Dec 15, 2025</td></tr>
 </table>
 
-<!-- ──────────── TESTING ──────────── -->
-<h2 id="tests">9. Testing Framework (4,144 files, 743,094 lines)</h2>
-
-<h3>9.1. Test Directory Structure</h3>
-<table>
-  <tr><th>Directory</th><th>Contents</th></tr>
-  <tr><td><code>tests/ttnn/unit_tests/</code></td><td>366 Python + 108 C++ unit tests for TT-NN operations</td></tr>
-  <tr><td><code>tests/ttnn/nightly/</code></td><td>255 Python nightly regression tests</td></tr>
-  <tr><td><code>tests/ttnn/python_api_testing/</code></td><td>34 Python API validation tests</td></tr>
-  <tr><td><code>tests/ttnn/integration_tests/</code></td><td>23 Python end-to-end integration tests</td></tr>
-  <tr><td><code>tests/ttnn/docs_examples/</code></td><td>16 testable documentation examples</td></tr>
-  <tr><td><code>tests/ttnn/distributed/</code></td><td>13 Python multi-device tests</td></tr>
-  <tr><td><code>tests/ttnn/perf_tests/</code></td><td>Performance benchmarks</td></tr>
-  <tr><td><code>tests/ttnn/stress_tests/</code></td><td>5 stress / soak tests</td></tr>
-  <tr><td><code>tests/ttnn/profiling/</code></td><td>5 profiling tests (Tracy integration)</td></tr>
-  <tr><td><code>tests/tt_metal/</code></td><td>Low-level Metalium tests: LLRT, microbenchmarks, distributed, fabric</td></tr>
-  <tr><td><code>tests/tt_eager/</code></td><td>Eager-mode tests: kernels, ops, tensors, Python API</td></tr>
-  <tr><td><code>tests/nightly/</code></td><td>Nightly regressions: single_card, t3000, tg, blackhole</td></tr>
-  <tr><td><code>tests/end_to_end_tests/</code></td><td>Full pipeline tests</td></tr>
-  <tr><td><code>tests/scale_out/</code></td><td>Multi-box scale-out tests</td></tr>
-  <tr><td><code>tests/sweep_framework/</code></td><td>Parameter sweep testing framework with visualization</td></tr>
-</table>
-
-<h3>9.2. Test Configuration</h3>
-<ul>
-  <li><strong>887 YAML test files</strong> define test parameters, hardware targets, and expected results</li>
-  <li>Tests run via <code>pytest</code> (configured in <code>pytest.ini</code>)</li>
-  <li>C++ tests use GoogleTest framework</li>
-  <li>CI/CD via GitHub Actions (workflows in <code>.github/workflows/</code>)</li>
-</ul>
-
-<!-- ──────────── TOOLS ──────────── -->
-<h2 id="tools">10. Tools & Debugging Ecosystem</h2>
-
-<table>
-  <tr><th>Tool</th><th>Repository</th><th>Purpose</th></tr>
-  <tr><td>TT-NN Visualizer</td><td><a href="https://github.com/tenstorrent/ttnn-visualizer">ttnn-visualizer</a></td><td>Interactive model execution graphs, memory plots, tensor details</td></tr>
-  <tr><td>TT-Exalens</td><td><a href="https://github.com/tenstorrent/tt-exalens">tt-exalens</a></td><td>Low-level hardware debugging (TT-Lensium)</td></tr>
-  <tr><td>TT-SMI</td><td><a href="https://github.com/tenstorrent/tt-smi">tt-smi</a></td><td>System Management Interface — device telemetry, firmware info</td></tr>
-  <tr><td>Model Explorer</td><td><a href="https://github.com/tenstorrent/model-explorer">model-explorer</a></td><td>Hierarchical model graph visualization</td></tr>
-  <tr><td>Tracy Profiler</td><td><a href="https://github.com/tenstorrent/tracy">tracy</a></td><td>Real-time ns-resolution CPU/GPU profiling</td></tr>
-  <tr><td>Watcher</td><td>(bundled)</td><td>Firmware/kernel error monitoring, hang detection</td></tr>
-  <tr><td>Inspector</td><td>(bundled)</td><td>Host runtime data queries and logging</td></tr>
-  <tr><td>DPRINT</td><td>(bundled)</td><td>Print variables, addresses, CB data from device kernels to host</td></tr>
-  <tr><td>Metal Profiler</td><td>(bundled)</td><td>Device-side performance counters and profiling</td></tr>
-  <tr><td>JIT Compile Server</td><td>(bundled)</td><td>Caches compiled kernel binaries for faster iteration</td></tr>
-</table>
-
-<h3>10.1. Related Tenstorrent Projects</h3>
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin:1em 0">
-  <span class="tag">TT-Forge</span><span class="tag">TT-Forge-FE</span>
-  <span class="tag">TT-Torch</span><span class="tag">TT-XLA</span>
-  <span class="tag">TT-MLIR</span><span class="tag">TT-TVM</span>
-  <span class="tag">vLLM TT Plugin</span>
+<h3>11.4. Community Stats (May 2026)</h3>
+<div class="stat-grid">
+  <div class="stat-card"><div class="num">1,474</div><div class="label">GitHub Stars</div></div>
+  <div class="stat-card"><div class="num">469</div><div class="label">GitHub Forks</div></div>
+  <div class="stat-card"><div class="num">5,371</div><div class="label">Discord Members</div></div>
+  <div class="stat-card"><div class="num">~672</div><div class="label">Discord Online</div></div>
 </div>
 
 <!-- ──────────── BOUNTIES ──────────── -->
-<h2 id="bounties">11. Bounty Program</h2>
+   681|<h2 id="bounties">11. Bounty Program</h2>
+   682|
+   683|<div class="warning">
+   684|  <strong>Tenstorrent Bounty Program:</strong> This repository participates in Tenstorrent's paid bounty program. Issues tagged with <code>bounty</code> pay actual money for open-source contributions. See the <a href="https://docs.tenstorrent.com/bounty_terms.html">Bounty Terms and Conditions</a>.
+   685|</div>
+   686|
+   687|<p>Bounty issues are labeled with <code>bounty</code> and typically include a difficulty level tag. Open bounty issues can be found by filtering the issue tracker: <a href="https://github.com/tenstorrent/tt-metal/issues?q=is%3Aissue%20state%3Aopen%20label%3Abounty">tt-metal bounty issues</a>.</p>
+   688|
+   689|<p>Common bounty categories include:</p>
+   690|<ul>
+   691|  <li>New operator implementations in TT-NN</li>
+   692|  <li>Performance optimization of existing operations</li>
+   693|  <li>Bug fixes and edge-case handling</li>
+   694|  <li>Model bring-up and optimization</li>
+   695|  <li>Testing and validation infrastructure</li>
+   696|  <li>Documentation and examples</li>
+   697|</ul>
+   698|
+   699|<!-- ──────────── FILE TYPES ──────────── -->
+   700|<h2 id="files">12. Repository File Type Breakdown</h2>
+   701|
+   702|<table>
+   703|  <tr><th>Extension</th><th>Count</th><th>Purpose</th></tr>
+   704|  <tr><td><code>.py</code></td><td>5,132</td><td>Python (TT-NN API, tests, models, scripts, tools)</td></tr>
+   705|  <tr><td><code>.cpp</code></td><td>4,257</td><td>C++ source (Metalium, TT-NN, kernels, tests)</td></tr>
+   706|  <tr><td><code>.hpp</code></td><td>2,256</td><td>C++ headers (API, implementation)</td></tr>
+   707|  <tr><td><code>.yaml</code></td><td>1,251</td><td>Test configurations, sweep parameters</td></tr>
+   708|  <tr><td><code>.h</code></td><td>1,203</td><td>C headers (firmware, third-party, JIT build)</td></tr>
+   709|  <tr><td><code>.png</code></td><td>436</td><td>Documentation images</td></tr>
+   710|  <tr><td><code>.md</code></td><td>419</td><td>Documentation (guides, tech reports, READMEs)</td></tr>
+   711|  <tr><td><code>.txt</code></td><td>283</td><td>Text files (configs, logs, license)</td></tr>
+   712|  <tr><td><code>.rst</code></td><td>264</td><td>Sphinx documentation source</td></tr>
+   713|  <tr><td><code>.json</code></td><td>229</td><td>Configurations, test data, presets</td></tr>
+   714|  <tr><td><code>.textproto</code></td><td>157</td><td>Protobuf text format (fabric configs)</td></tr>
+   715|  <tr><td><code>.cmake</code></td><td>144</td><td>CMake modules</td></tr>
+   716|  <tr><td><code>.sh</code></td><td>135</td><td>Shell scripts (build, install, CI)</td></tr>
+   717|  <tr><td><code>.cc</code></td><td>21</td><td>C++ alternative extension</td></tr>
+   718|  <tr><td><code>.ipynb</code></td><td>16</td><td>Jupyter notebook tutorials</td></tr>
+   719|  <tr><td><code>.fbs</code></td><td>14</td><td>FlatBuffers schema (for distributed communication)</td></tr>
+   720|  <tr><td><code>.proto</code></td><td>12</td><td>Protocol Buffers schema (for fabric)</td></tr>
+   721|  <tr><td><code>.ld</code></td><td>17</td><td>Linker scripts for RISC-V firmware</td></tr>
+   722|  <tr><td><code>.S</code></td><td>6</td><td>Assembly (RISC-V boot/init)</td></tr>
+   723|  <tr><td><code>.patch</code></td><td>13</td><td>Third-party patches</td></tr>
+   724|</table>
+   725|
+   726|<!-- ──────────── TECH REPORTS ──────────── -->
+   727|<h2 id="reports">13. Technical Reports (370 files)</h2>
+   728|
+   729|<p>The <code>tech_reports/</code> directory contains deep-dive documentation on specific topics, each typically with a markdown report and supporting images/code:</p>
+   730|
+   731|<table>
+   732|  <tr><th>Report</th><th>Topic</th></tr>
+   733|  <tr><td>Matrix Engine</td><td>How the FPU/Tensix matrix unit computes, performance characteristics</td></tr>
+   734|  <tr><td>Data Formats</td><td>Supported floating-point and integer formats (bf16, fp16, fp32, int8, etc.)</td></tr>
+   735|  <tr><td>Reconfiguring Data Formats</td><td>Runtime data format switching mechanics</td></tr>
+   736|  <tr><td>Handling Special Values</td><td>NaN, Inf, subnormal handling on Tenstorrent hardware</td></tr>
+   737|  <tr><td>Memory / Allocator</td><td>SRAM and DRAM allocation strategies, interleaved vs sharded</td></tr>
+   738|  <tr><td>Tensor Layouts</td><td>Tile-based tensor storage, padding, sharding, interleaved modes</td></tr>
+   739|  <tr><td>Saturating DRAM Bandwidth</td><td>How to achieve peak DRAM throughput</td></tr>
+   740|  <tr><td>Flash Attention</td><td>Optimized attention implementation on Wormhole</td></tr>
+   741|  <tr><td>CNNs on TT Architectures</td><td>Convolution optimization guide</td></tr>
+   742|  <tr><td>Ethernet Multichip</td><td>Inter-chip Ethernet communication and performance</td></tr>
+   743|  <tr><td>Blackhole Bring-Up</td><td>Programming guide for Blackhole hardware</td></tr>
+   744|  <tr><td>Sub-Devices</td><td>Partitioning a chip into independent sub-devices</td></tr>
+   745|  <tr><td>Programming Mesh of Devices</td><td>Scale-up: multi-device mesh programming with TT-NN</td></tr>
+   746|  <tr><td>Programming Multiple Meshes</td><td>Scale-out: multiple meshes across hosts</td></tr>
+   747|  <tr><td>TT-Fabric Architecture</td><td>Inter-host fabric communication design</td></tr>
+   748|  <tr><td>TT-Distributed Architecture</td><td>Multi-host distributed execution design</td></tr>
+   749|  <tr><td>Advanced Performance Optimizations</td><td>Model optimization techniques and best practices</td></tr>
+   750|  <tr><td>LLMs Bring-Up</td><td>LLM implementation guide in TT-NN</td></tr>
+   751|  <tr><td>GEMM FLOPS</td><td>Matrix multiply performance benchmarks</td></tr>
+   752|  <tr><td>Tensor Sharding</td><td>Sharding strategies for distributed execution</td></tr>
+   753|  <tr><td>Programming Examples</td><td>Example walkthroughs: shard_data_rm, pad_multi_core, matmul variants</td></tr>
+   754|  <tr><td>PCIe Bandwidth</td><td>Host-to-device transfer optimization</td></tr>
+   755|  <tr><td>Op Kernel Development</td><td>Guide for developing new Metalium kernels</td></tr>
+   756|  <tr><td>Real-Time Profiler</td><td>Using the on-device profiler</td></tr>
+   757|  <tr><td>Debugging</td><td>General debugging methodology for Tenstorrent programs</td></tr>
+   758|  <tr><td>Code Indexing</td><td>IDE setup for tt-metal development</td></tr>
+   759|</table>
+   760|
+   761|<!-- ──────────── LIMITATIONS ──────────── -->
+<h2 id="limitations">14. Limitations & Known Issues</h2>
 
+<h3>14.1. IEEE 754 Compliance</h3>
 <div class="warning">
-  <strong>Tenstorrent Bounty Program:</strong> This repository participates in Tenstorrent's paid bounty program. Issues tagged with <code>bounty</code> pay actual money for open-source contributions. See the <a href="https://docs.tenstorrent.com/bounty_terms.html">Bounty Terms and Conditions</a>.
+  <strong>TT hardware is NOT fully IEEE 754 compliant.</strong> Only select FPU ops (add_tiles, mul_tiles, matmul_tiles) and SFPU ops handle Inf/NaN per IEEE. All other operations treat special numbers as ordinary values with undefined results. Denormals are flushed to zero in ALL formats. Special values are only detected at FPU/SFPU output — intermediate Inf/NaN may go undetected. Detection is per-core OR'd across lanes — you cannot tell which lane produced the special value.
 </div>
 
-<p>Bounty issues are labeled with <code>bounty</code> and typically include a difficulty level tag. Open bounty issues can be found by filtering the issue tracker: <a href="https://github.com/tenstorrent/tt-metal/issues?q=is%3Aissue%20state%3Aopen%20label%3Abounty">tt-metal bounty issues</a>.</p>
-
-<p>Common bounty categories include:</p>
+<h3>14.2. Hardware Constraints</h3>
 <ul>
-  <li>New operator implementations in TT-NN</li>
-  <li>Performance optimization of existing operations</li>
-  <li>Bug fixes and edge-case handling</li>
-  <li>Model bring-up and optimization</li>
-  <li>Testing and validation infrastructure</li>
-  <li>Documentation and examples</li>
+  <li><strong>Fixed 32×32 tile size</strong> — all tensors padded to tile boundaries. Wasted memory for non-aligned dimensions.</li>
+  <li><strong>5 RISC-V CPUs per Tensix core</strong> — 32-bit RV32IM, no FPU on baby RISC-V. They dispatch, not compute.</li>
+  <li><strong>1.5 MB SRAM per core</strong> — large models must spill to DRAM (higher latency).</li>
+  <li><strong>Matrix engine minimum dimensions</strong> — 8×16 for in0, 16×16 for in1. Smaller dims waste compute (1/8 throughput for 1×16).</li>
+  <li><strong>No automatic caching</strong> — all memory movement is explicit via circular buffers and NoC.</li>
+  <li><strong>No built-in threadIdx</strong> — explicit per-core runtime args required for SPMD.</li>
 </ul>
 
-<!-- ──────────── FILE TYPES ──────────── -->
-<h2 id="files">12. Repository File Type Breakdown</h2>
+<h3>14.3. Known Gaps</h3>
+<ul>
+  <li><strong>40+ experimental models</strong> still in bring-up (DeepSeek-V3, Grok, Falcon-40B, Mistral-24B, SDXL, VAE, YOLO, DETR3D, EfficientDet, SwinV2, InceptionV4, DeIT, BLIP, gemma4, NanoGPT, BGE, etc.)</li>
+  <li><strong>Blackhole optimization</strong> is under active development — many models not yet supported on BH</li>
+  <li><strong>from_torch with ROW_MAJOR_LAYOUT</strong> hangs on certain 5D tensor shapes with permute (known bug on BH)</li>
+  <li><strong>No integer quantization</strong> — no int8 or int4 support, only block floating-point</li>
+  <li><strong>Training less mature</strong> than inference — TT-Train exists (111K lines) but with fewer models and optimizers than inference</li>
+  <li><strong>Linux only</strong> — no Windows or macOS support</li>
+  <li><strong>Limited third-party ecosystem</strong> — vLLM plugin exists but no native ONNX Runtime, TensorRT, or OpenVINO integration</li>
+</ul>
 
+<h3>14.4. Precision Tradeoffs</h3>
 <table>
-  <tr><th>Extension</th><th>Count</th><th>Purpose</th></tr>
-  <tr><td><code>.py</code></td><td>5,132</td><td>Python (TT-NN API, tests, models, scripts, tools)</td></tr>
-  <tr><td><code>.cpp</code></td><td>4,257</td><td>C++ source (Metalium, TT-NN, kernels, tests)</td></tr>
-  <tr><td><code>.hpp</code></td><td>2,256</td><td>C++ headers (API, implementation)</td></tr>
-  <tr><td><code>.yaml</code></td><td>1,251</td><td>Test configurations, sweep parameters</td></tr>
-  <tr><td><code>.h</code></td><td>1,203</td><td>C headers (firmware, third-party, JIT build)</td></tr>
-  <tr><td><code>.png</code></td><td>436</td><td>Documentation images</td></tr>
-  <tr><td><code>.md</code></td><td>419</td><td>Documentation (guides, tech reports, READMEs)</td></tr>
-  <tr><td><code>.txt</code></td><td>283</td><td>Text files (configs, logs, license)</td></tr>
-  <tr><td><code>.rst</code></td><td>264</td><td>Sphinx documentation source</td></tr>
-  <tr><td><code>.json</code></td><td>229</td><td>Configurations, test data, presets</td></tr>
-  <tr><td><code>.textproto</code></td><td>157</td><td>Protobuf text format (fabric configs)</td></tr>
-  <tr><td><code>.cmake</code></td><td>144</td><td>CMake modules</td></tr>
-  <tr><td><code>.sh</code></td><td>135</td><td>Shell scripts (build, install, CI)</td></tr>
-  <tr><td><code>.cc</code></td><td>21</td><td>C++ alternative extension</td></tr>
-  <tr><td><code>.ipynb</code></td><td>16</td><td>Jupyter notebook tutorials</td></tr>
-  <tr><td><code>.fbs</code></td><td>14</td><td>FlatBuffers schema (for distributed communication)</td></tr>
-  <tr><td><code>.proto</code></td><td>12</td><td>Protocol Buffers schema (for fabric)</td></tr>
-  <tr><td><code>.ld</code></td><td>17</td><td>Linker scripts for RISC-V firmware</td></tr>
-  <tr><td><code>.S</code></td><td>6</td><td>Assembly (RISC-V boot/init)</td></tr>
-  <tr><td><code>.patch</code></td><td>13</td><td>Third-party patches</td></tr>
+  <tr><th>Operation Type</th><th>BF16 (HiFi4)</th><th>BFP8 (HiFi2)</th><th>BFP4 (LoFi)</th></tr>
+  <tr><td>Matrix Multiply</td><td>Reference accuracy</td><td>&lt;0.1% error typical</td><td>&lt;0.5% error typical</td></tr>
+  <tr><td>Attention (SDPA)</td><td>Reference</td><td>Minor degradation</td><td>Not recommended</td></tr>
+  <tr><td>Element-wise (ReLU, GELU)</td><td>Reference</td><td>Negligible</td><td>Negligible</td></tr>
+  <tr><td>Softmax / LayerNorm</td><td>Reference</td><td>Use BF16 for these</td><td>Do not quantize</td></tr>
 </table>
 
-<!-- ──────────── TECH REPORTS ──────────── -->
-<h2 id="reports">13. Technical Reports (370 files)</h2>
-
-<p>The <code>tech_reports/</code> directory contains deep-dive documentation on specific topics, each typically with a markdown report and supporting images/code:</p>
+<!-- ──────────── VS CUDA ──────────── -->
+<h2 id="vs-cuda">15. TT-Metal vs. CUDA: Detailed Comparison</h2>
 
 <table>
-  <tr><th>Report</th><th>Topic</th></tr>
-  <tr><td>Matrix Engine</td><td>How the FPU/Tensix matrix unit computes, performance characteristics</td></tr>
-  <tr><td>Data Formats</td><td>Supported floating-point and integer formats (bf16, fp16, fp32, int8, etc.)</td></tr>
-  <tr><td>Reconfiguring Data Formats</td><td>Runtime data format switching mechanics</td></tr>
-  <tr><td>Handling Special Values</td><td>NaN, Inf, subnormal handling on Tenstorrent hardware</td></tr>
-  <tr><td>Memory / Allocator</td><td>SRAM and DRAM allocation strategies, interleaved vs sharded</td></tr>
-  <tr><td>Tensor Layouts</td><td>Tile-based tensor storage, padding, sharding, interleaved modes</td></tr>
-  <tr><td>Saturating DRAM Bandwidth</td><td>How to achieve peak DRAM throughput</td></tr>
-  <tr><td>Flash Attention</td><td>Optimized attention implementation on Wormhole</td></tr>
-  <tr><td>CNNs on TT Architectures</td><td>Convolution optimization guide</td></tr>
-  <tr><td>Ethernet Multichip</td><td>Inter-chip Ethernet communication and performance</td></tr>
-  <tr><td>Blackhole Bring-Up</td><td>Programming guide for Blackhole hardware</td></tr>
-  <tr><td>Sub-Devices</td><td>Partitioning a chip into independent sub-devices</td></tr>
-  <tr><td>Programming Mesh of Devices</td><td>Scale-up: multi-device mesh programming with TT-NN</td></tr>
-  <tr><td>Programming Multiple Meshes</td><td>Scale-out: multiple meshes across hosts</td></tr>
-  <tr><td>TT-Fabric Architecture</td><td>Inter-host fabric communication design</td></tr>
-  <tr><td>TT-Distributed Architecture</td><td>Multi-host distributed execution design</td></tr>
-  <tr><td>Advanced Performance Optimizations</td><td>Model optimization techniques and best practices</td></tr>
-  <tr><td>LLMs Bring-Up</td><td>LLM implementation guide in TT-NN</td></tr>
-  <tr><td>GEMM FLOPS</td><td>Matrix multiply performance benchmarks</td></tr>
-  <tr><td>Tensor Sharding</td><td>Sharding strategies for distributed execution</td></tr>
-  <tr><td>Programming Examples</td><td>Example walkthroughs: shard_data_rm, pad_multi_core, matmul variants</td></tr>
-  <tr><td>PCIe Bandwidth</td><td>Host-to-device transfer optimization</td></tr>
-  <tr><td>Op Kernel Development</td><td>Guide for developing new Metalium kernels</td></tr>
-  <tr><td>Real-Time Profiler</td><td>Using the on-device profiler</td></tr>
-  <tr><td>Debugging</td><td>General debugging methodology for Tenstorrent programs</td></tr>
-  <tr><td>Code Indexing</td><td>IDE setup for tt-metal development</td></tr>
+  <tr><th>Aspect</th><th>TT-Metal / Metalium</th><th>NVIDIA CUDA</th></tr>
+  <tr><td><strong>License</strong></td><td>Apache 2.0 (fully open source)</td><td>Proprietary (EULA-restricted)</td></tr>
+  <tr><td><strong>Programming Model</strong></td><td>Explicit data movement via circular buffers + NoC. SPMD with per-core runtime args.</td><td>Hierarchical: grid → block → thread. Built-in threadIdx/blockIdx.</td></tr>
+  <tr><td><strong>Memory Model</strong></td><td>No cache hierarchy. All SRAM is scratchpad. Explicit producer-consumer via CBs.</td><td>L1/L2 cache hierarchy. Shared memory + global memory. Automatic caching.</td></tr>
+  <tr><td><strong>Compute Units</strong></td><td>5 RISC-V dispatch CPUs → FPU (matrix) + SFPU (vector) hardware engines</td><td>CUDA cores (scalar) + Tensor cores (matrix). Threads compute directly.</td></tr>
+  <tr><td><strong>Tile Size</strong></td><td>Fixed 32×32. All operations tile-native.</td><td>Variable. 16×16 (FP16 tensor core), flexible threadblock.</td></tr>
+  <tr><td><strong>Interconnect</strong></td><td>Standard Ethernet (up to 800 Gbps). No proprietary fabric.</td><td>NVLink + NVSwitch (proprietary, high-speed).</td></tr>
+  <tr><td><strong>Multi-Chip Scaling</strong></td><td>Ethernet mesh. Galaxy: 32 chips, 2,269 T/S on Llama 70B.</td><td>NVLink domain (8 GPUs typical). DGX: 8×H100.</td></tr>
+  <tr><td><strong>Quantization</strong></td><td>Block floating-point (bfp8, bfp4, fp8_e4m3). No integer quant.</td><td>INT8, INT4, FP8, FP4. Mature ecosystem.</td></tr>
+  <tr><td><strong>Ecosystem</strong></td><td>TT-NN (like PyTorch), TT-Train, TT-Forge, vLLM plugin. Young ecosystem.</td><td>cuDNN, cuBLAS, TensorRT, NCCL, Triton. Massive ecosystem.</td></tr>
+  <tr><td><strong>Cloud Availability</strong></td><td>Tenstorrent Cloud only (first-party). No AWS/GCP/Azure.</td><td>Every major cloud provider. Ubiquitous.</td></tr>
+  <tr><td><strong>Entry Price</strong></td><td>$999 (n150s / p100a). Open source, no license fees.</td><td>$0 (software) + GPU cost. A100: ~$10K, H100: ~$30K.</td></tr>
+  <tr><td><strong>Power Efficiency</strong></td><td>160W (n150) / 300W (p150). Lower TDP.</td><td>300W (A100) / 700W (H100). Higher TDP.</td></tr>
+  <tr><td><strong>Maturity</strong></td><td>v0.68 (2026). Rapidly evolving, monthly releases.</td><td>CUDA 12.x (2007+). Very mature, stable.</td></tr>
+  <tr><td><strong>Debuggability</strong></td><td>DPRINT from kernels, Watcher, Tracy profiler, TT-Exalens. Good observability.</td><td>cuda-gdb, Nsight, CUDA-MEMCHECK. Mature tooling.</td></tr>
 </table>
+
+<h3>15.1. When to Choose Tenstorrent</h3>
+<ul>
+  <li>You want <strong>open-source</strong> from silicon to software stack</li>
+  <li>You need <strong>deterministic latency</strong> (no cache hierarchy)</li>
+  <li>You're doing <strong>LLM inference</strong> and want $/token efficiency</li>
+  <li>You want to <strong>own your hardware</strong> at consumer-accessible pricing</li>
+  <li>You're doing <strong>multi-chip scale-out</strong> over standard Ethernet</li>
+</ul>
+
+<h3>15.2. When to Choose NVIDIA</h3>
+<ul>
+  <li>You need <strong>maximum single-GPU performance</strong> (H100/B200)</li>
+  <li>You depend on <strong>CUDA ecosystem</strong> (cuDNN, TensorRT, Triton, etc.)</li>
+  <li>You need <strong>training</strong> at scale with proven infrastructure</li>
+  <li>You need <strong>cloud availability</strong> across multiple providers</li>
+  <li>You need <strong>INT4/INT8 quantization</strong> for edge deployment</li>
+</ul>
 
 <!-- ──────────── GLOSSARY ──────────── -->
-<h2 id="glossary">14. Glossary — Every Term Explained</h2>
+   762|<h2 id="glossary">14. Glossary — Every Term Explained</h2>
+   763|
+   764|<table>
+   765|  <tr><th>Term</th><th>Definition</th></tr>
+   766|  <tr><td><strong>ARC</strong></td><td>ARM RISC-V management processor on the chip — handles initialization, reset, and system management</td></tr>
+   767|  <tr><td><strong>Baby RISC-V</strong></td><td>The 5 small RISC-V CPUs inside each Tensix core. They are 32-bit RV32IM processors (no floating-point unit). They dispatch instructions to hardware engines rather than doing computation themselves.</td></tr>
+   768|  <tr><td><strong>Blackhole (BH)</strong></td><td>The latest Tenstorrent chip generation (2025+). 32-element vector units, enhanced performance vs Wormhole.</td></tr>
+   769|  <tr><td><strong>bfloat16 (bf16)</strong></td><td>Brain Floating Point 16-bit format — same exponent range as fp32 but reduced mantissa precision. Used extensively in Tenstorrent operations.</td></tr>
+   770|  <tr><td><strong>CB (Circular Buffer)</strong></td><td>A ring buffer in SRAM that acts as a producer-consumer queue between kernels. Hardware-synchronized via metadata.</td></tr>
+   771|  <tr><td><strong>CB Index</strong></td><td>Numeric identifier for a circular buffer (c_0 through c_31). Each CB must have a unique index on a Tensix core.</td></tr>
+   772|  <tr><td><strong>Command Queue</strong></td><td>A FIFO queue of commands (buffer writes, kernel launches, buffer reads) that the device executes asynchronously. Two queues per device: queue 0 (compute), queue 1 (data).</td></tr>
+   773|  <tr><td><strong>Compute API</strong></td><td>An abstraction layer that lets the same kernel code run on different hardware generations. The compiler selects the right microcode for the target chip.</td></tr>
+   774|  <tr><td><strong>CoreCoord</strong></td><td>A 2D coordinate {x, y} identifying a specific Tensix core on the chip grid.</td></tr>
+   775|  <tr><td><strong>CoreGrid</strong></td><td>The set of all available Tensix cores on a device, represented as a CoreRange.</td></tr>
+   776|  <tr><td><strong>CoreRange</strong></td><td>A rectangular range of cores from {start.x, start.y} to {end.x, end.y}.</td></tr>
+   777|  <tr><td><strong>DataFormat</strong></td><td>Enum specifying the numeric format of tile data: Float32, Float16, Float16_b (bfloat16), Int32, UInt16, etc.</td></tr>
+   778|  <tr><td><strong>DM0 / DM1</strong></td><td>Data Movement RISC-V cores 0 and 1. DM0 typically handles reads (NoC0), DM1 handles writes (NoC1).</td></tr>
+   779|  <tr><td><strong>DP (Data Parallel)</strong></td><td>Parallelization strategy: each device processes a different batch of data, same model weights.</td></tr>
+   780|  <tr><td><strong>DRAM</strong></td><td>Off-chip memory (8-48 GB per chip). Accessed via DRAM controllers on the chip grid. Much larger than SRAM but higher latency.</td></tr>
+   781|  <tr><td><strong>Dst Register</strong></td><td>Destination register bank — holds FPU/SFPU computation results. 8 Dst registers per Tensix core.</td></tr>
+   782|  <tr><td><strong>Ethernet (ETH)</strong></td><td>Standard Ethernet links used for inter-chip communication. Supports up to 800 Gbps on Wormhole/Blackhole.</td></tr>
+   783|  <tr><td><strong>Fast Dispatch</strong></td><td>Asynchronous command processing using dedicated RISC-V cores on the device. The default and recommended mode.</td></tr>
+   784|  <tr><td><strong>FPU</strong></td><td>Fixed/Floating-Point Unit — the matrix engine in a Tensix core. Performs matrix multiplications, element-wise binary operations (add, mul).</td></tr>
+   785|  <tr><td><strong>Galaxy</strong></td><td>A 32-chip Wormhole system (4x QuietBox equivalent). Used for largest single-host models.</td></tr>
+   786|  <tr><td><strong>Grayskull (GS)</strong></td><td>First-generation Tenstorrent chip. 64-element vectors, 19-bit floating point. Legacy generation.</td></tr>
+   787|  <tr><td><strong>HAL (Hardware Abstraction Layer)</strong></td><td>The layer that translates Metalium API calls into chip-specific register writes. Different HAL implementations for Grayskull, Wormhole, Blackhole.</td></tr>
+   788|  <tr><td><strong>Interleaved Buffer</strong></td><td>Default memory layout: data is distributed evenly across all DRAM controllers. Best for general workloads.</td></tr>
+   789|  <tr><td><strong>L1</strong></td><td>Another name for the 1.5 MB SRAM inside each Tensix core. Not a cache — it's addressable scratchpad memory.</td></tr>
+   790|  <tr><td><strong>LLK (Low Level Kernels)</strong></td><td>The tt-llk library (69,353 lines of C++) containing hardware-intrinsic-level kernel code for each processor generation.</td></tr>
+   791|  <tr><td><strong>LReg</strong></td><td>Local Register — holds internal state of the SFPU during vector computations.</td></tr>
+   792|  <tr><td><strong>Math Core</strong></td><td>The middle RISC-V CPU in the compute pipeline. Dispatches instructions to FPU and SFPU.</td></tr>
+   793|  <tr><td><strong>Mesh</strong></td><td>A collection of Tenstorrent devices treated as a unified computational unit. A single chip is a 1x1 mesh.</td></tr>
+   794|  <tr><td><strong>MeshDevice</strong></td><td>C++ class representing a mesh of devices. All operations go through a MeshDevice.</td></tr>
+   795|  <tr><td><strong>MeshWorkload</strong></td><td>A collection of Programs to execute on a mesh, with per-submesh coordinate ranges.</td></tr>
+   796|  <tr><td><strong>Metalium</strong></td><td>The low-level SDK for Tenstorrent hardware. Also called tt-metal, Metal, TT-Metalium.</td></tr>
+   797|  <tr><td><strong>MPMD</strong></td><td>Multiple Program Multiple Data — different Tensix cores run different kernel programs. Used for specialized patterns like multicast matmul.</td></tr>
+   798|  <tr><td><strong>n150 / n300</strong></td><td>Wormhole products: n150 = 1 chip, n300 = 2 chips on one board (L-chip + R-chip)</td></tr>
+   799|  <tr><td><strong>NoC</strong></td><td>Network-on-Chip — the 2D torus interconnect that connects all nodes on the chip. Two independent NoCs (NoC0 and NoC1) running in opposite directions.</td></tr>
+   800|  <tr><td><strong>p100 / p150</strong></td><td>Blackhole products: p100 = 1 chip, p150 = 1 chip (different SKU)</td></tr>
+   801|  <tr><td><strong>Pack / Unpack</strong></td><td>Hardware engines that convert between linear memory format and 32×32 tiled format. The Pack core controls the packer; the Unpack core controls the unpacker.</td></tr>
+   802|  <tr><td><strong>Program</strong></td><td>A Metalium object containing kernels, circular buffers, and runtime arguments for a specific computation. Analogous to a CUDA kernel launch configuration.</td></tr>
+   803|  <tr><td><strong>QuietBox</strong></td><td>An 8-chip system (8×Wormhole or 4×Blackhole) in a mesh topology. The standard multi-chip configuration.</td></tr>
+   804|  <tr><td><strong>Runtime Args</strong></td><td>Arguments passed to kernels at runtime (vs compile-time args). Set per-core via <code>SetRuntimeArgs()</code>.</td></tr>
+   805|  <tr><td><strong>SFPU</strong></td><td>Single-instruction FPU — the vector engine. Performs element-wise operations on 32-element vectors: sin, cos, exp, tanh, relu, etc.</td></tr>
+   806|  <tr><td><strong>Sharded Buffer</strong></td><td>Memory layout where tensor data is distributed across multiple Tensix cores' SRAM based on physical topology. Reduces NoC traffic.</td></tr>
+   807|  <tr><td><strong>Slow Dispatch</strong></td><td>Debug mode where host CPU manages every device operation synchronously. Set via <code>TT_METAL_SLOW_DISPATCH_MODE=1</code>.</td></tr>
+   808|  <tr><td><strong>SPMD</strong></td><td>Single Program Multiple Data — all Tensix cores run the same kernel but on different data slices. The default Metalium model.</td></tr>
+   809|  <tr><td><strong>SrcA / SrcB</strong></td><td>Source register banks — hold input data for the FPU matrix engine.</td></tr>
+   810|  <tr><td><strong>SRAM</strong></td><td>Static RAM inside each Tensix core (1.5 MB per core). Fast, deterministic access. Not a cache — addressable scratchpad.</td></tr>
+   811|  <tr><td><strong>Tensix Core</strong></td><td>The basic compute unit: 5 Baby RISC-V CPUs + FPU + SFPU + Pack/Unpack + 1.5MB SRAM + 2 NoC interfaces.</td></tr>
+   812|  <tr><td><strong>Tensix Processor</strong></td><td>The entire chip — a grid of Tensix cores plus DRAM controllers, Ethernet links, ARC, and PCIe.</td></tr>
+   813|  <tr><td><strong>Tile</strong></td><td>A 32×32 matrix of elements in a specific data format. The native computational unit of Tenstorrent hardware.</td></tr>
+   814|  <tr><td><strong>TP (Tensor Parallel)</strong></td><td>Parallelization strategy: model weights are split across multiple devices (each holds part of each layer).</td></tr>
+   815|  <tr><td><strong>tt-Fabric</strong></td><td>The inter-host communication fabric that routes traffic between multiple 32-chip boxes over Ethernet.</td></tr>
+   816|  <tr><td><strong>TTFT</strong></td><td>Time To First Token — milliseconds to generate the first output token in LLM inference.</td></tr>
+   817|  <tr><td><strong>T/S/U</strong></td><td>Tokens per Second per User — throughput of token generation per user after prefill. 1 / inter-token latency.</td></tr>
+   818|  <tr><td><strong>Wormhole (WH)</strong></td><td>Second-generation Tenstorrent chip. 32-element vector units, 32-bit FP, 800G Ethernet. Current mainstream generation.</td></tr>
+   819|</table>
+   820|
+   821|<!-- ──────────── ERROR HANDLING ──────────── -->
+<h2 id="error-handling">16. Error Handling & Debugging Guide</h2>
 
-<table>
-  <tr><th>Term</th><th>Definition</th></tr>
-  <tr><td><strong>ARC</strong></td><td>ARM RISC-V management processor on the chip — handles initialization, reset, and system management</td></tr>
-  <tr><td><strong>Baby RISC-V</strong></td><td>The 5 small RISC-V CPUs inside each Tensix core. They are 32-bit RV32IM processors (no floating-point unit). They dispatch instructions to hardware engines rather than doing computation themselves.</td></tr>
-  <tr><td><strong>Blackhole (BH)</strong></td><td>The latest Tenstorrent chip generation (2025+). 32-element vector units, enhanced performance vs Wormhole.</td></tr>
-  <tr><td><strong>bfloat16 (bf16)</strong></td><td>Brain Floating Point 16-bit format — same exponent range as fp32 but reduced mantissa precision. Used extensively in Tenstorrent operations.</td></tr>
-  <tr><td><strong>CB (Circular Buffer)</strong></td><td>A ring buffer in SRAM that acts as a producer-consumer queue between kernels. Hardware-synchronized via metadata.</td></tr>
-  <tr><td><strong>CB Index</strong></td><td>Numeric identifier for a circular buffer (c_0 through c_31). Each CB must have a unique index on a Tensix core.</td></tr>
-  <tr><td><strong>Command Queue</strong></td><td>A FIFO queue of commands (buffer writes, kernel launches, buffer reads) that the device executes asynchronously. Two queues per device: queue 0 (compute), queue 1 (data).</td></tr>
-  <tr><td><strong>Compute API</strong></td><td>An abstraction layer that lets the same kernel code run on different hardware generations. The compiler selects the right microcode for the target chip.</td></tr>
-  <tr><td><strong>CoreCoord</strong></td><td>A 2D coordinate {x, y} identifying a specific Tensix core on the chip grid.</td></tr>
-  <tr><td><strong>CoreGrid</strong></td><td>The set of all available Tensix cores on a device, represented as a CoreRange.</td></tr>
-  <tr><td><strong>CoreRange</strong></td><td>A rectangular range of cores from {start.x, start.y} to {end.x, end.y}.</td></tr>
-  <tr><td><strong>DataFormat</strong></td><td>Enum specifying the numeric format of tile data: Float32, Float16, Float16_b (bfloat16), Int32, UInt16, etc.</td></tr>
-  <tr><td><strong>DM0 / DM1</strong></td><td>Data Movement RISC-V cores 0 and 1. DM0 typically handles reads (NoC0), DM1 handles writes (NoC1).</td></tr>
-  <tr><td><strong>DP (Data Parallel)</strong></td><td>Parallelization strategy: each device processes a different batch of data, same model weights.</td></tr>
-  <tr><td><strong>DRAM</strong></td><td>Off-chip memory (8-48 GB per chip). Accessed via DRAM controllers on the chip grid. Much larger than SRAM but higher latency.</td></tr>
-  <tr><td><strong>Dst Register</strong></td><td>Destination register bank — holds FPU/SFPU computation results. 8 Dst registers per Tensix core.</td></tr>
-  <tr><td><strong>Ethernet (ETH)</strong></td><td>Standard Ethernet links used for inter-chip communication. Supports up to 800 Gbps on Wormhole/Blackhole.</td></tr>
-  <tr><td><strong>Fast Dispatch</strong></td><td>Asynchronous command processing using dedicated RISC-V cores on the device. The default and recommended mode.</td></tr>
-  <tr><td><strong>FPU</strong></td><td>Fixed/Floating-Point Unit — the matrix engine in a Tensix core. Performs matrix multiplications, element-wise binary operations (add, mul).</td></tr>
-  <tr><td><strong>Galaxy</strong></td><td>A 32-chip Wormhole system (4x QuietBox equivalent). Used for largest single-host models.</td></tr>
-  <tr><td><strong>Grayskull (GS)</strong></td><td>First-generation Tenstorrent chip. 64-element vectors, 19-bit floating point. Legacy generation.</td></tr>
-  <tr><td><strong>HAL (Hardware Abstraction Layer)</strong></td><td>The layer that translates Metalium API calls into chip-specific register writes. Different HAL implementations for Grayskull, Wormhole, Blackhole.</td></tr>
-  <tr><td><strong>Interleaved Buffer</strong></td><td>Default memory layout: data is distributed evenly across all DRAM controllers. Best for general workloads.</td></tr>
-  <tr><td><strong>L1</strong></td><td>Another name for the 1.5 MB SRAM inside each Tensix core. Not a cache — it's addressable scratchpad memory.</td></tr>
-  <tr><td><strong>LLK (Low Level Kernels)</strong></td><td>The tt-llk library (69,353 lines of C++) containing hardware-intrinsic-level kernel code for each processor generation.</td></tr>
-  <tr><td><strong>LReg</strong></td><td>Local Register — holds internal state of the SFPU during vector computations.</td></tr>
-  <tr><td><strong>Math Core</strong></td><td>The middle RISC-V CPU in the compute pipeline. Dispatches instructions to FPU and SFPU.</td></tr>
-  <tr><td><strong>Mesh</strong></td><td>A collection of Tenstorrent devices treated as a unified computational unit. A single chip is a 1x1 mesh.</td></tr>
-  <tr><td><strong>MeshDevice</strong></td><td>C++ class representing a mesh of devices. All operations go through a MeshDevice.</td></tr>
-  <tr><td><strong>MeshWorkload</strong></td><td>A collection of Programs to execute on a mesh, with per-submesh coordinate ranges.</td></tr>
-  <tr><td><strong>Metalium</strong></td><td>The low-level SDK for Tenstorrent hardware. Also called tt-metal, Metal, TT-Metalium.</td></tr>
-  <tr><td><strong>MPMD</strong></td><td>Multiple Program Multiple Data — different Tensix cores run different kernel programs. Used for specialized patterns like multicast matmul.</td></tr>
-  <tr><td><strong>n150 / n300</strong></td><td>Wormhole products: n150 = 1 chip, n300 = 2 chips on one board (L-chip + R-chip)</td></tr>
-  <tr><td><strong>NoC</strong></td><td>Network-on-Chip — the 2D torus interconnect that connects all nodes on the chip. Two independent NoCs (NoC0 and NoC1) running in opposite directions.</td></tr>
-  <tr><td><strong>p100 / p150</strong></td><td>Blackhole products: p100 = 1 chip, p150 = 1 chip (different SKU)</td></tr>
-  <tr><td><strong>Pack / Unpack</strong></td><td>Hardware engines that convert between linear memory format and 32×32 tiled format. The Pack core controls the packer; the Unpack core controls the unpacker.</td></tr>
-  <tr><td><strong>Program</strong></td><td>A Metalium object containing kernels, circular buffers, and runtime arguments for a specific computation. Analogous to a CUDA kernel launch configuration.</td></tr>
-  <tr><td><strong>QuietBox</strong></td><td>An 8-chip system (8×Wormhole or 4×Blackhole) in a mesh topology. The standard multi-chip configuration.</td></tr>
-  <tr><td><strong>Runtime Args</strong></td><td>Arguments passed to kernels at runtime (vs compile-time args). Set per-core via <code>SetRuntimeArgs()</code>.</td></tr>
-  <tr><td><strong>SFPU</strong></td><td>Single-instruction FPU — the vector engine. Performs element-wise operations on 32-element vectors: sin, cos, exp, tanh, relu, etc.</td></tr>
-  <tr><td><strong>Sharded Buffer</strong></td><td>Memory layout where tensor data is distributed across multiple Tensix cores' SRAM based on physical topology. Reduces NoC traffic.</td></tr>
-  <tr><td><strong>Slow Dispatch</strong></td><td>Debug mode where host CPU manages every device operation synchronously. Set via <code>TT_METAL_SLOW_DISPATCH_MODE=1</code>.</td></tr>
-  <tr><td><strong>SPMD</strong></td><td>Single Program Multiple Data — all Tensix cores run the same kernel but on different data slices. The default Metalium model.</td></tr>
-  <tr><td><strong>SrcA / SrcB</strong></td><td>Source register banks — hold input data for the FPU matrix engine.</td></tr>
-  <tr><td><strong>SRAM</strong></td><td>Static RAM inside each Tensix core (1.5 MB per core). Fast, deterministic access. Not a cache — addressable scratchpad.</td></tr>
-  <tr><td><strong>Tensix Core</strong></td><td>The basic compute unit: 5 Baby RISC-V CPUs + FPU + SFPU + Pack/Unpack + 1.5MB SRAM + 2 NoC interfaces.</td></tr>
-  <tr><td><strong>Tensix Processor</strong></td><td>The entire chip — a grid of Tensix cores plus DRAM controllers, Ethernet links, ARC, and PCIe.</td></tr>
-  <tr><td><strong>Tile</strong></td><td>A 32×32 matrix of elements in a specific data format. The native computational unit of Tenstorrent hardware.</td></tr>
-  <tr><td><strong>TP (Tensor Parallel)</strong></td><td>Parallelization strategy: model weights are split across multiple devices (each holds part of each layer).</td></tr>
-  <tr><td><strong>tt-Fabric</strong></td><td>The inter-host communication fabric that routes traffic between multiple 32-chip boxes over Ethernet.</td></tr>
-  <tr><td><strong>TTFT</strong></td><td>Time To First Token — milliseconds to generate the first output token in LLM inference.</td></tr>
-  <tr><td><strong>T/S/U</strong></td><td>Tokens per Second per User — throughput of token generation per user after prefill. 1 / inter-token latency.</td></tr>
-  <tr><td><strong>Wormhole (WH)</strong></td><td>Second-generation Tenstorrent chip. 32-element vector units, 32-bit FP, 800G Ethernet. Current mainstream generation.</td></tr>
-</table>
-
-<!-- ──────────── ATTACK SURFACE ──────────── -->
-<h2 id="attack-surface">15. Attack Surface for Bug Bounty Hunters</h2>
-
-<div class="warning">
-  <strong>For Bug Bounty Hunters:</strong> This section maps TT-Metal code areas to vulnerability classes for bounty hunting purposes.
-</div>
-
-<h3>15.1. High-Value Attack Surfaces</h3>
-<table>
-  <tr><th>Area</th><th>Lines</th><th>Likely Bug Classes</th><th>Competition</th></tr>
-  <tr><td>Kernel Compilation (JIT server, HAL)</td><td>~50,000</td><td>Code injection via kernel source, compiler miscompilation, missing validation</td><td>Very Low</td></tr>
-  <tr><td>Dispatch / Command Queue</td><td>~40,000</td><td>Use-after-free, race conditions, buffer overflow in command processing</td><td>Very Low</td></tr>
-  <tr><td>Circular Buffer Management</td><td>~15,000</td><td>Buffer overflow, underflow, data races between reader/compute/writer</td><td>Low</td></tr>
-  <tr><td>NoC Data Movement</td><td>~20,000</td><td>Out-of-bounds read/write, integer overflow in address calculation</td><td>Low</td></tr>
-  <tr><td>Tile Pack/Unpack</td><td>~30,000</td><td>Type confusion, format conversion errors, uninitialized memory</td><td>Low</td></tr>
-  <tr><td>Sharding / Distributed</td><td>~25,000</td><td>Incorrect shard boundaries, cross-core data corruption</td><td>Low</td></tr>
-  <tr><td>TT-Fabric (multi-host)</td><td>~15,000</td><td>Network protocol bugs, deserialization vulnerabilities</td><td>Very Low</td></tr>
-  <tr><td>Operator Implementations (33 categories)</td><td>~430,000</td><td>Logic errors in edge cases, numerical instability, tensor shape validation</td><td>Medium</td></tr>
-  <tr><td>Python Bindings (nanobind)</td><td>~20,000</td><td>Type confusion at C++/Python boundary, reference counting errors</td><td>Low</td></tr>
-  <tr><td>Allocator / Memory Management</td><td>~10,000</td><td>Double-free, use-after-free, buffer overrun, alignment bugs</td><td>Medium</td></tr>
-</table>
-
-<h3>15.2. Recommended Bounty Hunting Strategy</h3>
+<h3>16.1. What Happens When a Kernel Crashes</h3>
+<p>When a RISC-V kernel faults (e.g., out-of-bounds memory access, illegal instruction):</p>
 <ol>
-  <li><strong>Start with circular buffers</strong> — relatively small surface (15K lines), well-defined boundaries, every operation uses them, bugs here affect everything.</li>
-  <li><strong>Focus on edge cases in operators</strong> — zero-size tensors, NaN/Inf propagation, format boundary conditions.</li>
-  <li><strong>Multi-chip distributed code</strong> — very low competition, complex race conditions possible.</li>
-  <li><strong>Build a fuzzing harness</strong> targeting tile-level operations with random tensor shapes, formats, and sharding configurations.</li>
+  <li><strong>Watcher</strong> (firmware monitor) detects the hang/fault within seconds</li>
+  <li>The faulting core's state is captured: program counter, register dump, last instructions</li>
+  <li><strong>DPRINT</strong> buffer (if enabled) contains any debug messages the kernel printed before crashing</li>
+  <li>The host receives a waypoint/error code indicating which core failed and what type of fault</li>
+  <li>The command queue enters error state — subsequent commands are rejected until device reset</li>
 </ol>
 
-<!-- ──────────── FOOTER ──────────── -->
-<hr style="margin:3em 0 1em;border-color:var(--border)">
-<p style="text-align:center;color:var(--muted);font-size:0.85em">
-  TT-Metal: The Complete Reference — Generated May 2026<br>
-  Based on deep static analysis of <a href="https://github.com/tenstorrent/tt-metal">tenstorrent/tt-metal</a> repository<br>
-  License: Apache 2.0<br>
-  All statistics are exact counts (no approximations)<br>
-  Documentation designed for absolute beginners through expert bounty hunters
-</p>
+<h3>16.2. Essential Debugging Tools</h3>
+<table>
+  <tr><th>Tool</th><th>What It Shows</th><th>How to Use</th></tr>
+  <tr><td><strong>DPRINT</strong></td><td>Print variables, addresses, CB state from device kernels to host</td><td><code>export TT_METAL_DPRINT_CORES=0,0</code> (core x=0, y=0). Use <code>DPRINT &lt;&lt; "value: " &lt;&lt; var &lt;&lt; ENDL();</code> in kernels.</td></tr>
+  <tr><td><strong>Watcher</strong></td><td>Kernel hang detection, illegal instruction, address violation</td><td>Enabled by default. Checks NOC transactions, kernel status, CB usage every ~2 seconds.</td></tr>
+  <tr><td><strong>Tracy Profiler</strong></td><td>Real-time ns-resolution CPU/device timeline</td><td>Build with Tracy enabled (default). Connect Tracy GUI to running process.</td></tr>
+  <tr><td><strong>Metal Profiler</strong></td><td>Device-side performance counters: cycle counts, NoC utilization, CB stalls</td><td>Enabled via <code>env.enable_profiler(device)</code> in Python.</td></tr>
+  <tr><td><strong>TT-Exalens</strong></td><td>Low-level hardware inspection: register dumps, memory scans, NOC route tables</td><td>Separate tool: <a href="https://github.com/tenstorrent/tt-exalens">github.com/tenstorrent/tt-exalens</a></td></tr>
+  <tr><td><strong>TT-NN Visualizer</strong></td><td>Graphical model execution graphs, tensor memory plots, per-op details</td><td><a href="https://github.com/tenstorrent/ttnn-visualizer">github.com/tenstorrent/ttnn-visualizer</a></td></tr>
+  <tr><td><strong>Slow Dispatch</strong></td><td>Synchronous host-controlled execution — every operation is step-by-step</td><td><code>export TT_METAL_SLOW_DISPATCH_MODE=1</code></td></tr>
+</table>
 
-</body>
-</html>
+<h3>16.3. Common Error Patterns</h3>
+<table>
+  <tr><th>Symptom</th><th>Likely Cause</th><th>Fix</th></tr>
+  <tr><td>"CB push_back without reserve"</td><td>Circular buffer overflow — reader pushing data faster than compute consumes</td><td>Increase CB size (more tiles) or add flow control</td></tr>
+  <tr><td>"CB pop_front without wait"</td><td>Circular buffer underflow — consumer reading before producer writes</td><td>Check CB indices match between kernels. Ensure cb_wait_front before cb_pop_front</td></tr>
+  <tr><td>"NOC translation error"</td><td>Accessing memory at wrong address or on wrong NoC channel</td><td>Verify buffer addresses, NoC direction (NoC0 vs NoC1), and DRAM bank mapping</td></tr>
+  <tr><td>"Tile size mismatch"</td><td>Kernel expects different DataFormat than CB was configured with</td><td>Ensure DataFormat in CircularBufferConfig matches kernel's get_tile_size() call</td></tr>
+  <tr><td>Hang / timeout</td><td>Deadlock between kernels — e.g., reader waiting for CB space, writer waiting for CB data</td><td>Check CB sizes: need at least 2 tiles for pipelining. Enable Watcher for hang report.</td></tr>
+  <tr><td>NaN in output</td><td>Special value (Inf/NaN) propagated through non-compliant op</td><td>Check if operation handles IEEE special values. Use BF16 HiFi4 for critical ops.</td></tr>
+  <tr><td>Wrong numerical result</td><td>Precision too low (LoFi/HiFi2) for sensitive operation</td><td>Bump fidelity: softmax/layernorm need at least HiFi2, preferably BF16</td></tr>
+</table>
+
+<h3>16.4. Debugging Workflow</h3>
+<pre><code># 1. Start with slow dispatch for maximum visibility
+export TT_METAL_SLOW_DISPATCH_MODE=1
+
+# 2. Enable DPRINT on specific cores
+export TT_METAL_DPRINT_CORES="0,0"  # core at (x=0, y=0)
+
+# 3. Add DPRINT statements to kernels
+#    In reader: DPRINT &lt;&lt; "Reading tile " &lt;&lt; i &lt;&lt; " from addr 0x" &lt;&lt; a_addr &lt;&lt; ENDL();
+#    In compute: DPRINT &lt;&lt; "Processing tile " &lt;&lt; i &lt;&lt; ENDL();
+
+# 4. Run with verbose output
+python your_test.py -svv
+
+# 5. If hangs: check Watcher output (printed automatically)
+# 6. If wrong results: reduce to single tile, single core, HiFi4 fidelity
+# 7. Once working: switch to fast dispatch, scale up</code></pre>
+
+<div class="tip">
+  <strong>Golden rule:</strong> Start with 1 core, 1 tile, HiFi4 (BF16) fidelity. Once correct, scale up. Never debug with LoFi precision — the numerical noise masks real bugs.
+</div>
+
+<!-- ──────────── ATTACK SURFACE ──────────── -->
+   822|<h2 id="attack-surface">15. Attack Surface for Bug Bounty Hunters</h2>
+   823|
+   824|<div class="warning">
+   825|  <strong>For Bug Bounty Hunters:</strong> This section maps TT-Metal code areas to vulnerability classes for bounty hunting purposes.
+   826|</div>
+   827|
+   828|<h3>15.1. High-Value Attack Surfaces</h3>
+   829|<table>
+   830|  <tr><th>Area</th><th>Lines</th><th>Likely Bug Classes</th><th>Competition</th></tr>
+   831|  <tr><td>Kernel Compilation (JIT server, HAL)</td><td>~50,000</td><td>Code injection via kernel source, compiler miscompilation, missing validation</td><td>Very Low</td></tr>
+   832|  <tr><td>Dispatch / Command Queue</td><td>~40,000</td><td>Use-after-free, race conditions, buffer overflow in command processing</td><td>Very Low</td></tr>
+   833|  <tr><td>Circular Buffer Management</td><td>~15,000</td><td>Buffer overflow, underflow, data races between reader/compute/writer</td><td>Low</td></tr>
+   834|  <tr><td>NoC Data Movement</td><td>~20,000</td><td>Out-of-bounds read/write, integer overflow in address calculation</td><td>Low</td></tr>
+   835|  <tr><td>Tile Pack/Unpack</td><td>~30,000</td><td>Type confusion, format conversion errors, uninitialized memory</td><td>Low</td></tr>
+   836|  <tr><td>Sharding / Distributed</td><td>~25,000</td><td>Incorrect shard boundaries, cross-core data corruption</td><td>Low</td></tr>
+   837|  <tr><td>TT-Fabric (multi-host)</td><td>~15,000</td><td>Network protocol bugs, deserialization vulnerabilities</td><td>Very Low</td></tr>
+   838|  <tr><td>Operator Implementations (33 categories)</td><td>~430,000</td><td>Logic errors in edge cases, numerical instability, tensor shape validation</td><td>Medium</td></tr>
+   839|  <tr><td>Python Bindings (nanobind)</td><td>~20,000</td><td>Type confusion at C++/Python boundary, reference counting errors</td><td>Low</td></tr>
+   840|  <tr><td>Allocator / Memory Management</td><td>~10,000</td><td>Double-free, use-after-free, buffer overrun, alignment bugs</td><td>Medium</td></tr>
+   841|</table>
+   842|
+   843|<h3>15.2. Recommended Bounty Hunting Strategy</h3>
+   844|<ol>
+   845|  <li><strong>Start with circular buffers</strong> — relatively small surface (15K lines), well-defined boundaries, every operation uses them, bugs here affect everything.</li>
+   846|  <li><strong>Focus on edge cases in operators</strong> — zero-size tensors, NaN/Inf propagation, format boundary conditions.</li>
+   847|  <li><strong>Multi-chip distributed code</strong> — very low competition, complex race conditions possible.</li>
+   848|  <li><strong>Build a fuzzing harness</strong> targeting tile-level operations with random tensor shapes, formats, and sharding configurations.</li>
+   849|</ol>
+   850|
+   851|<!-- ──────────── FOOTER ──────────── -->
+   852|<hr style="margin:3em 0 1em;border-color:var(--border)">
+   853|<p style="text-align:center;color:var(--muted);font-size:0.85em">
+   854|  TT-Metal: The Complete Reference — Generated May 2026<br>
+   855|  Based on deep static analysis of <a href="https://github.com/tenstorrent/tt-metal">tenstorrent/tt-metal</a> repository<br>
+   856|  License: Apache 2.0<br>
+   857|  All statistics are exact counts (no approximations)<br>
+   858|  Documentation designed for absolute beginners through expert bounty hunters
+   859|</p>
+   860|
+   861|</body>
+   862|</html>
